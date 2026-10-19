@@ -255,6 +255,26 @@ it('closes the current desktop-hosted page itself instead of the engine’s curr
   await startup.stop()
 })
 
+it('lists desktop-hosted pages after the engine’s tabs, as automation would pick them', async () => {
+  const { startup } = await startWithEngine()
+  const paired = pairedHost({ desktopAttached: true })
+  const commands = createRuntimeBrowserCommands(paired.host)
+  const opened = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/',
+    worktree: 'id:wt-1'
+  })
+
+  const listed = await commands.browserTabList({ worktree: 'id:wt-1' })
+  expect(listed.tabs.map((tab) => [tab.browserPageId, tab.index, tab.active])).toEqual([
+    ['engine-page', 0, false],
+    [opened.browserPageId, 1, true]
+  ])
+  await expect(commands.browserTabShow({ page: opened.browserPageId })).resolves.toMatchObject({
+    tab: { browserPageId: opened.browserPageId, index: 1 }
+  })
+  await startup.stop()
+})
+
 it('hands workspace commands back to the engine once it creates or selects a tab', async () => {
   const { startup, engine } = await startWithEngine()
   const paired = pairedHost({ desktopAttached: true })
@@ -265,14 +285,18 @@ it('hands workspace commands back to the engine once it creates or selects a tab
     url: 'https://example.org/',
     worktree: 'id:wt-1'
   })
-  expect(isActive(opened.browserPageId)).toBe(true)
 
   await commands.browserTabCreate({ worktree: 'id:wt-1', url: 'https://engine.test/' })
   expect(engine.browserTabCreate).toHaveBeenCalled()
   expect(isActive(opened.browserPageId)).toBe(false)
 
   await commands.browserTabSwitch({ page: opened.browserPageId, worktree: 'id:wt-1' })
-  expect(engine.browserTabSwitch).toHaveBeenCalled()
+  expect(isActive(opened.browserPageId)).toBe(true)
+  // A switch by page alone: the engine names no workspace, so every client page steps back.
+  await expect(commands.browserTabSwitch({ page: 'engine-page' })).resolves.toMatchObject({
+    browserPageId: 'engine-page'
+  })
+  expect(engine.browserTabSwitch).toHaveBeenCalledWith({ page: 'engine-page' })
   expect(isActive(opened.browserPageId)).toBe(false)
   await startup.stop()
 })

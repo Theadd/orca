@@ -21,14 +21,26 @@ export type BrowserClientPageQueryHost = Pick<
   | 'notifyHeadlessBrowserSessionTabsChanged'
 >
 
+/** The tabs a host's own engine holds, beside the pages desktops host for it. */
+export type BrowserEngineTabs = {
+  list(params: { worktree?: string }): Promise<BrowserTabListResult>
+  switchTo(params: {
+    page: string
+    worktree?: string
+    focus?: boolean
+  }): Promise<BrowserTabSwitchResult>
+}
+
 /**
- * Tab commands for a host whose only tabs are the pages desktops host for it. "Current" is the
- * page the registry marks active, the same page workspace automation without --page drives.
+ * One logical tab list per host: its engine's tabs (if any), then the pages desktops host for it.
+ * "Current" is what workspace automation without --page drives: the active client page, which the
+ * dispatcher routes to first, else the engine's own active tab. Nothing invents a current tab.
  */
 export class BrowserClientPageQueries {
   constructor(
     private readonly host: BrowserClientPageQueryHost,
-    private readonly profileFor: (browserProfileId: string) => BrowserProfileLabel
+    private readonly profileFor: (browserProfileId: string) => BrowserProfileLabel,
+    private readonly engine: BrowserEngineTabs | null
   ) {}
 
   async browserTabList(params: { worktree?: string }): Promise<BrowserTabListResult> {
@@ -36,7 +48,18 @@ export class BrowserClientPageQueries {
       ? (await this.host.resolveBrowserWorkspace(params.worktree)).id
       : undefined
     const pages = this.host.getRuntimeBrowserPageRegistry().listPages(workspaceId)
-    return { tabs: pages.map((page, index) => this.row(page, index)) }
+    const clientPageActive = pages.some((page) => page.active)
+    const engineTabs = this.engine
+      ? (await this.engine.list(params)).tabs.map((tab) => ({
+          ...tab,
+          active: clientPageActive ? false : tab.active
+        }))
+      : []
+    const tabs = [
+      ...engineTabs,
+      ...pages.map((page) => clientPageTabRow(page, this.profileFor(page.browserProfileId)))
+    ]
+    return { tabs: tabs.map((tab, index) => ({ ...tab, index })) }
   }
 
   async browserTabCurrent(params: { worktree?: string }): Promise<BrowserTabShowResult> {
@@ -49,11 +72,10 @@ export class BrowserClientPageQueries {
 
   async browserTabShow(params: { page: string; worktree?: string }): Promise<BrowserTabShowResult> {
     const page = this.host.getRuntimeBrowserPageRegistry().getPage(params.page)
-    const tab = page
-      ? (
-          await this.browserTabList({ worktree: params.worktree ?? `id:${page.workspaceId}` })
-        ).tabs.find((candidate) => candidate.browserPageId === page.browserPageId)
-      : undefined
+    const worktree = params.worktree ?? (page ? `id:${page.workspaceId}` : undefined)
+    const tab = (await this.browserTabList({ worktree })).tabs.find(
+      (candidate) => candidate.browserPageId === params.page
+    )
     if (!tab) {
       throw new BrowserError('browser_tab_not_found', `Browser page ${params.page} was not found`)
     }
@@ -71,39 +93,74 @@ export class BrowserClientPageQueries {
       ? listed.tabs.findIndex((tab) => tab.browserPageId === params.page)
       : (params.index ?? -1)
     const selected = listed.tabs[switched]
-    const page = selected
-      ? this.host.getRuntimeBrowserPageRegistry().getPage(selected.browserPageId)
-      : undefined
-    if (!page) {
+    const pages = this.host.getRuntimeBrowserPageRegistry()
+    const page = selected ? pages.getPage(selected.browserPageId) : undefined
+    if (page) {
+      pages.activatePage(page.browserPageId, page.placement)
+      publishSwitchedBrowserSessionTab(this.host, {
+        placementKind: 'client',
+        browserPageId: page.browserPageId,
+        worktreeId: page.workspaceId,
+        focus: params.focus
+      })
+      return { switched, browserPageId: page.browserPageId }
+    }
+    if (!selected || !this.engine) {
       const label = params.page ? `Browser page ${params.page}` : `Tab index ${params.index}`
       throw new BrowserError(
         'browser_tab_not_found',
         `${label} out of range (0-${listed.tabs.length - 1})`
       )
     }
-    this.host.getRuntimeBrowserPageRegistry().activatePage(page.browserPageId, page.placement)
-    publishSwitchedBrowserSessionTab(this.host, {
-      placementKind: 'client',
-      browserPageId: page.browserPageId,
-      worktreeId: page.workspaceId,
-      focus: params.focus
+    const result = await this.engine.switchTo({
+      page: selected.browserPageId,
+      ...(params.worktree ? { worktree: params.worktree } : {}),
+      ...(params.focus !== undefined ? { focus: params.focus } : {})
     })
-    return { switched, browserPageId: page.browserPageId }
+    await yieldClientPageSelection(
+      this.host,
+      params.worktree ?? (selected.worktreeId ? `id:${selected.worktreeId}` : undefined)
+    )
+    return { switched, browserPageId: result.browserPageId }
   }
+}
 
-  private row(page: RuntimeBrowserClientPage, index: number): BrowserTabInfo {
-    const profile = this.profileFor(page.browserProfileId)
-    return {
-      browserPageId: page.browserPageId,
-      index,
-      url: page.url,
-      title: page.title,
-      active: page.active,
-      loadError: null,
-      certificateFailure: null,
-      worktreeId: page.workspaceId,
-      profileId: profile.id,
-      profileLabel: profile.label
-    }
+function clientPageTabRow(
+  page: RuntimeBrowserClientPage,
+  profile: BrowserProfileLabel
+): BrowserTabInfo {
+  return {
+    browserPageId: page.browserPageId,
+    index: 0,
+    url: page.url,
+    title: page.title,
+    active: page.active,
+    loadError: null,
+    certificateFailure: null,
+    worktreeId: page.workspaceId,
+    profileId: profile.id,
+    profileLabel: profile.label
+  }
+}
+
+/**
+ * Once an engine tab is created or selected it leads, so no client page may still claim to be
+ * active and keep taking workspace automation. With no workspace to scope it to (an engine that
+ * does not report one), every client page steps back: guessing a workspace would misroute.
+ */
+export async function yieldClientPageSelection(
+  host: Pick<
+    BrowserClientPageQueryHost,
+    'getRuntimeBrowserPageRegistry' | 'resolveBrowserWorkspace'
+  >,
+  worktree: string | undefined
+): Promise<void> {
+  const pages = host.getRuntimeBrowserPageRegistry()
+  pages.deactivateGlobal()
+  const workspaceIds = worktree
+    ? [(await host.resolveBrowserWorkspace(worktree)).id]
+    : [...new Set(pages.listPages().map((page) => page.workspaceId))]
+  for (const workspaceId of workspaceIds) {
+    pages.deactivateWorkspace(workspaceId)
   }
 }

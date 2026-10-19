@@ -1,16 +1,16 @@
 /**
  * The browser commands orcad answers itself. Pages a paired desktop hosts for it live in this
- * runtime's lease and page registries, so opening one never needs a browser engine here. With no
- * engine those pages are every tab this host has, so the tab commands answer from the registry.
- * With an engine, tab commands stay the engine's, as before.
+ * runtime's lease and page registries, so opening one never needs a browser engine here. Tab
+ * commands see one logical list: the engine's tabs (if any), then the desktop-hosted pages.
  */
 import { BrowserError } from '../browser/browser-error'
 import type { RuntimeBrowserCommands } from '../runtime/browser/browser-commands'
 import type { RuntimeBrowserCommandHost } from '../runtime/browser/browser-command-contracts'
+import type { BrowserTabListResult, BrowserTabSwitchResult } from '../../shared/runtime-types'
 import { browserUnavailableError } from '../runtime/runtime-browser-commands-factory'
+import { browserTabCreateClientPageStartsActive } from '../runtime/browser-tab-create-publication'
 import {
   closeBrowserPageWithoutEngine,
-  closeRegisteredBrowserClientPage,
   resolveClientPageToClose,
   retireRuntimeBrowserClientPage
 } from '../runtime/browser/browser-client-page-close'
@@ -21,13 +21,16 @@ import {
   hasPairedPageHost,
   openBrowserUrlOnClient
 } from '../runtime/browser/browser-client-page-opening'
-import { BrowserClientPageQueries } from '../runtime/browser/browser-client-page-queries'
-import type { RuntimeBrowserClientPage } from '../runtime/runtime-browser-page-registry'
-import { browserTabCreateClientPageStartsActive } from '../runtime/browser-tab-create-publication'
+import {
+  BrowserClientPageQueries,
+  yieldClientPageSelection,
+  type BrowserEngineTabs
+} from '../runtime/browser/browser-client-page-queries'
 
-type Forward = (args: unknown[]) => unknown
+/** Sends a call to the engine; `name` defaults to the member the proxy was asked for. */
+type Forward = (args: unknown[], name?: string) => unknown
 
-const CLIENT_PAGE_TAB_QUERIES = [
+const LOGICAL_TAB_QUERIES = [
   'browserTabList',
   'browserTabCurrent',
   'browserTabShow',
@@ -41,6 +44,12 @@ export function orcadClientPageCommand(
   forward: Forward,
   engineAvailable: () => boolean
 ): ((...args: never[]) => unknown) | undefined {
+  const logicalTabs = (): BrowserClientPageQueries =>
+    new BrowserClientPageQueries(
+      host,
+      orcadProfileLabel,
+      engineAvailable() ? engineTabs(forward) : null
+    )
   if (name === 'browserOpenUrlOnClient') {
     return (...args: Parameters<RuntimeBrowserCommands['browserOpenUrlOnClient']>) =>
       openBrowserUrlOnClient(host, args[0])
@@ -52,63 +61,28 @@ export function orcadClientPageCommand(
   if (name === 'browserTabClose') {
     return async (...args: Parameters<RuntimeBrowserCommands['browserTabClose']>) => {
       const params = args[0] ?? {}
-      if (engineAvailable()) {
-        // Why: client pages live in this runtime's registry, never in the engine. An active one is
-        // also what workspace automation without --page drives, so an implicit close takes it.
-        const active =
-          params.page || params.index !== undefined
-            ? undefined
-            : await activeClientPage(host, params)
-        return active
-          ? retireRuntimeBrowserClientPage(host, active)
-          : ((await closeRegisteredBrowserClientPage(host, params)) ?? forward(args))
+      // Why the logical list: an index or the current tab may name a desktop-hosted page.
+      const page = await resolveClientPageToClose(host, logicalTabs(), params)
+      if (page) {
+        return retireRuntimeBrowserClientPage(host, page)
       }
-      const page = await resolveClientPageToClose(host, clientPageQueries(host), params)
-      return page
-        ? retireRuntimeBrowserClientPage(host, page)
+      return engineAvailable()
+        ? forward(args)
         : closeBrowserPageWithoutEngine(host, params, browserUnavailableError)
     }
   }
-  const query = CLIENT_PAGE_TAB_QUERIES.find((candidate) => candidate === name)
+  const query = LOGICAL_TAB_QUERIES.find((candidate) => candidate === name)
   if (query) {
     return (...args: unknown[]) => {
-      if (!engineAvailable()) {
-        return servesClientPages(host)
-          ? callTabQuery(clientPageQueries(host), query, args)
-          : forward(args)
+      const hasClientPages = host.getRuntimeBrowserPageRegistry().listPages().length > 0
+      // Why: with nothing desktop-hosted, the engine's answer (or its refusal) is the whole answer.
+      if (!hasClientPages && (engineAvailable() || !hasPairedPageHost(host))) {
+        return forward(args)
       }
-      return query === 'browserTabSwitch'
-        ? afterEngineSelects(host, args[0], () => forward(args))
-        : forward(args)
+      return callTabQuery(logicalTabs(), query, args)
     }
   }
   return undefined
-}
-
-/**
- * Runs an engine create or switch, then hands the workspace's selection to the engine tab: the
- * dispatcher sends workspace automation without --page to the active client page, so one left
- * active would keep taking commands meant for the tab the engine now reports as current.
- */
-function afterEngineSelects(
-  host: RuntimeBrowserCommandHost,
-  params: unknown,
-  run: () => unknown
-): unknown {
-  if (host.getRuntimeBrowserPageRegistry().listPages().length === 0) {
-    return run()
-  }
-  return (async () => {
-    const result = await run()
-    const worktree =
-      isRecord(params) && typeof params.worktree === 'string' ? params.worktree : null
-    const pages = host.getRuntimeBrowserPageRegistry()
-    pages.deactivateGlobal()
-    if (worktree) {
-      pages.deactivateWorkspace((await host.resolveBrowserWorkspace(worktree)).id)
-    }
-    return result
-  })()
 }
 
 function createTab(
@@ -143,40 +117,55 @@ function createTab(
       orcadBrowserProfileId(params?.profileId)
     )
   }
-  if (!engineAvailable() || !browserTabCreateClientPageStartsActive(params?.activate)) {
+  if (
+    !engineAvailable() ||
+    !browserTabCreateClientPageStartsActive(params?.activate) ||
+    host.getRuntimeBrowserPageRegistry().listPages().length === 0
+  ) {
     return forward([params, caller])
   }
-  return afterEngineSelects(host, params, () => forward([params, caller]))
+  return (async () => {
+    const created = await forward([params, caller])
+    await yieldClientPageSelection(host, params?.worktree)
+    return created
+  })()
 }
 
-async function activeClientPage(
-  host: RuntimeBrowserCommandHost,
-  params: { worktree?: string }
-): Promise<RuntimeBrowserClientPage | undefined> {
-  if (!params.worktree) {
-    return undefined
+/** The engine's own tabs, read back through the proxy's forward. */
+function engineTabs(forward: Forward): BrowserEngineTabs {
+  return {
+    list: async (params) =>
+      requireTabResult(await forward([params], 'browserTabList'), isTabListResult),
+    switchTo: async (params) =>
+      requireTabResult(await forward([params], 'browserTabSwitch'), isTabSwitchResult)
   }
-  const workspaceId = (await host.resolveBrowserWorkspace(params.worktree)).id
-  return host
-    .getRuntimeBrowserPageRegistry()
-    .listPages(workspaceId)
-    .find((page) => page.active)
 }
 
-function servesClientPages(host: RuntimeBrowserCommandHost): boolean {
-  return host.getRuntimeBrowserPageRegistry().listPages().length > 0 || hasPairedPageHost(host)
+function requireTabResult<T>(value: unknown, guard: (candidate: unknown) => candidate is T): T {
+  if (!guard(value)) {
+    throw new BrowserError('browser_error', 'The browser engine returned an unreadable tab result.')
+  }
+  return value
 }
 
-function clientPageQueries(host: RuntimeBrowserCommandHost): BrowserClientPageQueries {
-  return new BrowserClientPageQueries(host, (browserProfileId) => ({
-    id: browserProfileId,
-    label: browserProfileId === DEFAULT_BROWSER_PROFILE_ID ? 'Default' : browserProfileId
-  }))
+function isTabListResult(value: unknown): value is BrowserTabListResult {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.tabs) &&
+    value.tabs.every(
+      (tab: unknown) =>
+        isRecord(tab) && typeof tab.browserPageId === 'string' && typeof tab.active === 'boolean'
+    )
+  )
+}
+
+function isTabSwitchResult(value: unknown): value is BrowserTabSwitchResult {
+  return isRecord(value) && typeof value.browserPageId === 'string'
 }
 
 function callTabQuery(
   queries: BrowserClientPageQueries,
-  name: (typeof CLIENT_PAGE_TAB_QUERIES)[number],
+  name: (typeof LOGICAL_TAB_QUERIES)[number],
   args: unknown[]
 ): unknown {
   const params: Record<string, unknown> = isRecord(args[0]) ? args[0] : {}
@@ -208,6 +197,13 @@ function orcadBrowserProfileId(profileId: string | undefined): string {
     throw new BrowserError('invalid_argument', `Browser profile ${profileId} was not found`)
   }
   return DEFAULT_BROWSER_PROFILE_ID
+}
+
+function orcadProfileLabel(browserProfileId: string): { id: string; label: string } {
+  return {
+    id: browserProfileId,
+    label: browserProfileId === DEFAULT_BROWSER_PROFILE_ID ? 'Default' : browserProfileId
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
