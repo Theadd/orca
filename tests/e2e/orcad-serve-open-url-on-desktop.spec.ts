@@ -211,14 +211,14 @@ test('orca open-url on orcad serve opens the page in the paired desktop', async 
       })
       .toBe(MARKER)
     // Client placement: the server owns the page and the desktop renders it.
-    const placement = await desktop.page.evaluate(
+    const mirrored = await desktop.page.evaluate(
       ({ remotePageId, worktreeId }) => {
         const state = window.__store?.getState()
         for (const workspace of state?.browserTabsByWorktree[worktreeId] ?? []) {
           for (const browserPage of state?.browserPagesByWorkspace[workspace.id] ?? []) {
             const handle = state?.remoteBrowserPageHandlesByPageId[browserPage.id]
             if ((handle?.remotePageId ?? browserPage.id) === remotePageId) {
-              return handle?.placement?.kind ?? null
+              return { localPageId: browserPage.id, placement: handle?.placement?.kind ?? null }
             }
           }
         }
@@ -226,7 +226,15 @@ test('orca open-url on orcad serve opens the page in the paired desktop', async 
       },
       { remotePageId: browserPageId, worktreeId }
     )
-    expect(placement).toBe('client')
+    expect(mirrored?.placement).toBe('client')
+    // Only for the evidence screenshot: bring the page's pane forward inside the hidden window.
+    await desktop.page.evaluate(
+      ({ localPageId, worktreeId }) =>
+        window.__store
+          ?.getState()
+          .focusBrowserTabInWorktree(worktreeId, localPageId, { surfacePane: true }),
+      { localPageId: mirrored?.localPageId ?? '', worktreeId }
+    )
     await desktop.page.screenshot({ path: testInfo.outputPath('desktop-with-open-url-page.png') })
     const tabs = await runProcess({
       program: process.execPath,

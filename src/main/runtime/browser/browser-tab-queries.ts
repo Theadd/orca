@@ -14,7 +14,7 @@ import type {
 } from './browser-command-contracts'
 import type { RuntimeBrowserCommandTargets } from './browser-command-targets'
 import type { RuntimeBrowserTabCatalog } from './browser-tab-catalog'
-import { activateClientPageTab } from './browser-client-page-queries'
+import { activateClientPageTab, yieldClientPageSelection } from './browser-client-page-queries'
 
 export class RuntimeBrowserTabQueries {
   constructor(
@@ -125,10 +125,7 @@ export class RuntimeBrowserTabQueries {
           ? (await this.host.resolveBrowserWorkspace(params.worktree)).id
           : undefined
     const result = await bridge.tabSwitch(undefined, worktreeId, selected.browserPageId)
-    this.host.getRuntimeBrowserPageRegistry().deactivateGlobal()
-    if (worktreeId) {
-      this.host.getRuntimeBrowserPageRegistry().deactivateWorkspace(worktreeId)
-    }
+    yieldClientPageSelection(this.host, worktreeId)
     // Why: scope focus to the tab's owning worktree; the renderer never yanks the user across worktrees on this signal (see focusBrowserTabInWorktree).
     const focusWorktreeId =
       worktreeId ?? browserManager.getWorktreeIdForTab(result.browserPageId) ?? undefined

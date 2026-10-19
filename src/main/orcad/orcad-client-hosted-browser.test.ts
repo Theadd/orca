@@ -155,9 +155,9 @@ it('sends the CLI’s unplaced tab to the paired desktop, and refuses as before 
   })
   expect(paired.pages.getPage(created.browserPageId)?.placement).toEqual(PLACEMENT)
   // A paired client that left placement out asked for a server page, which this host cannot make.
-  expect(() =>
+  await expect(
     commands.browserTabCreate({ worktree: 'id:wt-1' }, { pairedDeviceId: 'device-a' })
-  ).toThrow(/unavailable/)
+  ).rejects.toThrow(/unavailable/)
 
   const unattached = createRuntimeBrowserCommands(pairedHost({ desktopAttached: false }).host)
   expect(() => unattached.browserTabCreate({ worktree: 'id:wt-1' })).toThrow(/unavailable/)
@@ -268,6 +268,23 @@ it('closes the current desktop-hosted page itself instead of the engine’s curr
   // With the page gone, the engine's own current tab is the target again.
   await commands.browserTabClose({ worktree: 'id:wt-1' })
   expect(engine.browserTabClose).toHaveBeenCalledWith({ worktree: 'id:wt-1' })
+  await startup.stop()
+})
+
+it('hands the workspace’s selection to a new engine tab, so later commands follow it', async () => {
+  const { startup, engine } = await startWithEngine()
+  const browserTabCreate = vi.fn(async () => ({ browserPageId: 'engine-page' }))
+  Object.assign(engine, { browserTabCreate })
+  const paired = pairedHost({ desktopAttached: true })
+  const commands = createRuntimeBrowserCommands(paired.host)
+  const opened = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/',
+    worktree: 'id:wt-1'
+  })
+
+  await commands.browserTabCreate({ worktree: 'id:wt-1', url: 'https://engine.test/' })
+  expect(browserTabCreate).toHaveBeenCalled()
+  expect(paired.pages.getPage(opened.browserPageId)?.active).toBe(false)
   await startup.stop()
 })
 

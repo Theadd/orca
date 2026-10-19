@@ -20,8 +20,10 @@ import {
 } from '../runtime/browser/browser-client-page-opening'
 import {
   BrowserClientPageQueries,
+  yieldClientPageSelection,
   type BrowserEngineTabs
 } from '../runtime/browser/browser-client-page-queries'
+import { browserTabCreateClientPageStartsActive } from '../runtime/browser-tab-create-publication'
 import type { BrowserTabListResult, BrowserTabSwitchResult } from '../../shared/runtime-types'
 
 /** Sends a call to the engine; `name` defaults to the member the proxy was asked for. */
@@ -146,7 +148,19 @@ function createTab(
       orcadBrowserProfileId(params?.profileId)
     )
   }
-  return forward([params, caller])
+  if (host.getRuntimeBrowserPageRegistry().listPages().length === 0) {
+    return forward([params, caller])
+  }
+  return (async () => {
+    const created = await forward([params, caller])
+    if (browserTabCreateClientPageStartsActive(params?.activate)) {
+      yieldClientPageSelection(
+        host,
+        params?.worktree ? (await host.resolveBrowserWorkspace(params.worktree)).id : undefined
+      )
+    }
+    return created
+  })()
 }
 
 function callTabQuery(

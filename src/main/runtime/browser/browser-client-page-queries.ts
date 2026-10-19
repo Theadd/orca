@@ -138,18 +138,31 @@ export class BrowserClientPageQueries {
       ...(params.worktree ? { worktree: params.worktree } : {}),
       ...(params.focus !== undefined ? { focus: params.focus } : {})
     })
-    // Why: an engine tab now leads, so no client page may still claim to be active beside it.
-    pages.deactivateGlobal()
-    const workspaceId =
+    yieldClientPageSelection(
+      this.host,
       typeof selected.worktreeId === 'string'
         ? selected.worktreeId
         : params.worktree
           ? (await this.host.resolveBrowserWorkspace(params.worktree)).id
           : undefined
-    if (workspaceId) {
-      pages.deactivateWorkspace(workspaceId)
-    }
+    )
     return { switched, browserPageId: result.browserPageId }
+  }
+}
+
+/**
+ * The one rule for a workspace's active tab across engine tabs and client-hosted pages: once an
+ * engine tab is created or selected, no client page may still claim to be active, or workspace
+ * commands without --page would keep going to the old client page.
+ */
+export function yieldClientPageSelection(
+  host: Pick<RuntimeBrowserCommandHost, 'getRuntimeBrowserPageRegistry'>,
+  workspaceId: string | undefined
+): void {
+  const pages = host.getRuntimeBrowserPageRegistry()
+  pages.deactivateGlobal()
+  if (workspaceId) {
+    pages.deactivateWorkspace(workspaceId)
   }
 }
 
