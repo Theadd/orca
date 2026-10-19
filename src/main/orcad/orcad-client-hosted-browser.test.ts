@@ -155,9 +155,9 @@ it('sends the CLI’s unplaced tab to the paired desktop, and refuses as before 
   })
   expect(paired.pages.getPage(created.browserPageId)?.placement).toEqual(PLACEMENT)
   // A paired client that left placement out asked for a server page, which this host cannot make.
-  await expect(
+  expect(() =>
     commands.browserTabCreate({ worktree: 'id:wt-1' }, { pairedDeviceId: 'device-a' })
-  ).rejects.toThrow(/unavailable/)
+  ).toThrow(/unavailable/)
 
   const unattached = createRuntimeBrowserCommands(pairedHost({ desktopAttached: false }).host)
   expect(() => unattached.browserTabCreate({ worktree: 'id:wt-1' })).toThrow(/unavailable/)
@@ -192,6 +192,12 @@ it('lists, shows and switches desktop-hosted tabs with no engine', async () => {
   await expect(commands.browserTabShow({ page: second.browserPageId })).resolves.toMatchObject({
     tab: { url: 'https://example.org/b' }
   })
+  // With the current page closed none is selected, exactly as workspace automation sees it.
+  await commands.browserTabClose({ worktree: 'id:wt-1' })
+  expect(paired.pages.getPage(first.browserPageId)).toBeUndefined()
+  await expect(commands.browserTabCurrent({ worktree: 'id:wt-1' })).rejects.toMatchObject({
+    code: 'browser_no_tab'
+  })
   await startup.stop()
 })
 
@@ -216,7 +222,6 @@ async function startWithEngine() {
   const engineTab = { browserPageId: 'engine-page', index: 0, url: '', title: '', active: true }
   const engine = {
     browserTabList: vi.fn(async () => ({ tabs: [engineTab] })),
-    browserTabSwitch: vi.fn(async () => ({ switched: 0, browserPageId: 'engine-page' })),
     browserTabClose: vi.fn(async () => ({ closed: true }))
   }
   vi.mocked(resolveOrcadBrowserProvider).mockResolvedValueOnce({
@@ -229,29 +234,6 @@ async function startWithEngine() {
   await startup.ready
   return { startup, engine }
 }
-
-it('lists desktop-hosted pages after the engine’s tabs, and switches back to an engine tab', async () => {
-  const { startup, engine } = await startWithEngine()
-  const paired = pairedHost({ desktopAttached: true })
-  const commands = createRuntimeBrowserCommands(paired.host)
-  const opened = await commands.browserOpenUrlOnClient({
-    url: 'https://example.org/',
-    worktree: 'id:wt-1'
-  })
-
-  const listed = await commands.browserTabList({ worktree: 'id:wt-1' })
-  expect(listed.tabs.map((tab) => [tab.browserPageId, tab.index, tab.active])).toEqual([
-    ['engine-page', 0, false],
-    [opened.browserPageId, 1, true]
-  ])
-  await expect(commands.browserTabSwitch({ index: 0, worktree: 'id:wt-1' })).resolves.toEqual({
-    switched: 0,
-    browserPageId: 'engine-page'
-  })
-  expect(engine.browserTabSwitch).toHaveBeenCalledWith({ page: 'engine-page', worktree: 'id:wt-1' })
-  expect(paired.pages.getPage(opened.browserPageId)?.active).toBe(false)
-  await startup.stop()
-})
 
 it('closes the current desktop-hosted page itself instead of the engine’s current tab', async () => {
   const { startup, engine } = await startWithEngine()
@@ -268,23 +250,6 @@ it('closes the current desktop-hosted page itself instead of the engine’s curr
   // With the page gone, the engine's own current tab is the target again.
   await commands.browserTabClose({ worktree: 'id:wt-1' })
   expect(engine.browserTabClose).toHaveBeenCalledWith({ worktree: 'id:wt-1' })
-  await startup.stop()
-})
-
-it('hands the workspace’s selection to a new engine tab, so later commands follow it', async () => {
-  const { startup, engine } = await startWithEngine()
-  const browserTabCreate = vi.fn(async () => ({ browserPageId: 'engine-page' }))
-  Object.assign(engine, { browserTabCreate })
-  const paired = pairedHost({ desktopAttached: true })
-  const commands = createRuntimeBrowserCommands(paired.host)
-  const opened = await commands.browserOpenUrlOnClient({
-    url: 'https://example.org/',
-    worktree: 'id:wt-1'
-  })
-
-  await commands.browserTabCreate({ worktree: 'id:wt-1', url: 'https://engine.test/' })
-  expect(browserTabCreate).toHaveBeenCalled()
-  expect(paired.pages.getPage(opened.browserPageId)?.active).toBe(false)
   await startup.stop()
 })
 
