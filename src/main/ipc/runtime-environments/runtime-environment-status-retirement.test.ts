@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
   addEnvironmentFromPairingCode,
-  resolveEnvironment
+  resolveEnvironment,
+  updateEnvironmentFromPairingCode
 } from '../../../shared/runtime-environment-store'
 import { pairingCode } from './runtime-environments-ipc-test-harness'
 import { REMOTE_RUNTIME_SHARED_CONTROL_CAPABILITY } from '../../../shared/protocol-version'
@@ -109,4 +110,43 @@ it('does not fence another environment or a fresh probe after retirement', async
   await expect(getRuntimeEnvironmentStatus(directory, envId)).resolves.toMatchObject({ ok: true })
   expect(resolveEnvironment(directory, envId).runtimeId).toBe('old-host')
   expect(mocks.ensure).toHaveBeenCalledTimes(2)
+})
+
+/** What a re-pair over SSH does mid-probe: store a new pairing and retire the old transports. */
+function repairMidProbe(now: number): void {
+  updateEnvironmentFromPairingCode(directory, envId, {
+    now,
+    pairingCode: pairingCode(undefined, { deviceToken: `token-${now}` })
+  })
+  advanceRuntimeEnvironmentCapabilityIncarnation(envId)
+}
+
+it('answers from the successor owner when the probe itself re-paired the server', async () => {
+  mocks.request.mockImplementationOnce(async () => {
+    repairMidProbe(2)
+    return {
+      id: 'status',
+      ok: false,
+      error: { code: 'unauthorized', message: 'refused' },
+      _meta: { runtimeId: 'old-host' }
+    }
+  })
+  mocks.request.mockResolvedValueOnce(response())
+  await expect(
+    getRuntimeEnvironmentStatus(directory, envId, undefined, { reconnect: true })
+  ).resolves.toMatchObject({ ok: true })
+  expect(mocks.request).toHaveBeenCalledTimes(2)
+})
+
+it('follows a re-pair only once', async () => {
+  let now = 2
+  mocks.request.mockImplementation(async () => {
+    repairMidProbe(now++)
+    return response()
+  })
+  await expect(getRuntimeEnvironmentStatus(directory, envId)).resolves.toMatchObject({
+    ok: false,
+    error: { code: 'runtime_environment_changed' }
+  })
+  expect(mocks.request).toHaveBeenCalledTimes(2)
 })

@@ -1,5 +1,8 @@
 import { resolveEnvironment } from '../../../shared/runtime-environment-store'
-import { getPreferredPairedRuntimeConnection } from '../../../shared/runtime-environments'
+import {
+  getPreferredPairedRuntimeConnection,
+  type KnownRuntimeEnvironment
+} from '../../../shared/runtime-environments'
 import type { RuntimeRpcResponse } from '../../../shared/runtime-rpc-envelope'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
 import { getRuntimeEnvironmentCapabilityIncarnation } from './runtime-environment-capability-evidence'
@@ -13,7 +16,8 @@ export async function getRuntimeEnvironmentStatus(
   userDataPath: string,
   selector: string,
   timeoutMs?: number,
-  options?: { observeOnly?: true; signal?: AbortSignal; reconnect?: true }
+  options?: { observeOnly?: true; signal?: AbortSignal; reconnect?: true },
+  followRepair = true
 ): Promise<RuntimeRpcResponse<RuntimeStatus>> {
   const environment = resolveEnvironment(userDataPath, selector)
   if (isRuntimeEnvironmentManuallyDisconnected(environment.id)) {
@@ -33,7 +37,10 @@ export async function getRuntimeEnvironmentStatus(
   })
   // A retired request must not publish old status or borrow its replacement's diagnostics.
   if (getRuntimeEnvironmentCapabilityIncarnation(environment.id) !== incarnation) {
-    return runtimeEnvironmentChangedFailure(environment, 'status.get')
+    // Why follow once: a re-pair this probe set off retired its owner; the successor answers it.
+    return followRepair && pairingRevisionChanged(userDataPath, environment)
+      ? getRuntimeEnvironmentStatus(userDataPath, environment.id, timeoutMs, options, false)
+      : runtimeEnvironmentChangedFailure(environment, 'status.get')
   }
   return attachRemoteControlDiagnostics(
     withTailscaleHintForResponse(
@@ -43,4 +50,15 @@ export async function getRuntimeEnvironmentStatus(
     ),
     environment.id
   )
+}
+
+function pairingRevisionChanged(userDataPath: string, before: KnownRuntimeEnvironment): boolean {
+  try {
+    const after = resolveEnvironment(userDataPath, before.id)
+    return (
+      (after.pairingRevision ?? after.createdAt) !== (before.pairingRevision ?? before.createdAt)
+    )
+  } catch {
+    return false
+  }
 }

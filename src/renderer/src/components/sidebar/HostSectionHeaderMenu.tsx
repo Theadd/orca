@@ -155,7 +155,8 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
           : window.api.runtimeEnvironments.getStatus
       )({
         selector: parsed.environmentId,
-        timeoutMs: 10_000
+        // Why longer when pairing again: SSH, the readiness read and two handshakes all fit in it.
+        timeoutMs: retryPairing ? 45_000 : 10_000
       })
       unwrapRuntimeRpcResult<RuntimeStatus>(response)
       // Why: feed the probe result into the shared store so the host header and
