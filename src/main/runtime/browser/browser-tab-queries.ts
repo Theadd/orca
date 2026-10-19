@@ -14,6 +14,7 @@ import type {
 } from './browser-command-contracts'
 import type { RuntimeBrowserCommandTargets } from './browser-command-targets'
 import type { RuntimeBrowserTabCatalog } from './browser-tab-catalog'
+import { activateClientPageTab } from './browser-client-page-queries'
 
 export class RuntimeBrowserTabQueries {
   constructor(
@@ -113,15 +114,7 @@ export class RuntimeBrowserTabQueries {
     }
     const clientPage = this.host.getRuntimeBrowserPageRegistry().getPage(selected.browserPageId)
     if (clientPage) {
-      this.host
-        .getRuntimeBrowserPageRegistry()
-        .activatePage(clientPage.browserPageId, clientPage.placement)
-      publishSwitchedBrowserSessionTab(this.host, {
-        placementKind: 'client',
-        browserPageId: clientPage.browserPageId,
-        worktreeId: clientPage.workspaceId,
-        focus: params.focus
-      })
+      activateClientPageTab(this.host, clientPage, params.focus)
       return { switched: switchedIndex, browserPageId: clientPage.browserPageId }
     }
     const bridge = this.targets.requireAgentBrowserBridge()

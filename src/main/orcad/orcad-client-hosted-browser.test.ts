@@ -47,7 +47,6 @@ function pairedHost(options: { desktopAttached: boolean }) {
   })
   const createClientPage = vi.fn(async () => PLACEMENT)
   const issueClientPageCommand = vi.fn(() => ({
-    event: {} as never,
     result: Promise.resolve({ status: 'completed' as const })
   }))
   const notifyHeadlessBrowserSessionTabsChanged = vi.fn()
@@ -144,17 +143,60 @@ it('creates a client-placed tab without an engine, and only in the default profi
   await startup.stop()
 })
 
-it('sends an unplaced tab to the paired desktop, and refuses as before when none is attached', async () => {
+it('sends the CLI’s unplaced tab to the paired desktop, and refuses as before when none is attached', async () => {
   const startup = await startWithoutEngine()
   const paired = pairedHost({ desktopAttached: true })
-  const created = await createRuntimeBrowserCommands(paired.host).browserTabCreate({
+  const commands = createRuntimeBrowserCommands(paired.host)
+  const created = await commands.browserTabCreate({
     worktree: 'id:wt-1',
     url: 'https://example.org/'
   })
   expect(paired.pages.getPage(created.browserPageId)?.placement).toEqual(PLACEMENT)
+  // A paired client that left placement out asked for a server page, which this host cannot make.
+  expect(() =>
+    commands.browserTabCreate({ worktree: 'id:wt-1' }, { pairedDeviceId: 'device-a' })
+  ).toThrow(/unavailable/)
 
   const unattached = createRuntimeBrowserCommands(pairedHost({ desktopAttached: false }).host)
   expect(() => unattached.browserTabCreate({ worktree: 'id:wt-1' })).toThrow(/unavailable/)
+  await startup.stop()
+})
+
+it('lists, shows and switches desktop-hosted tabs with no engine', async () => {
+  const startup = await startWithoutEngine()
+  const paired = pairedHost({ desktopAttached: true })
+  const commands = createRuntimeBrowserCommands(paired.host)
+  const first = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/a',
+    worktree: 'id:wt-1'
+  })
+  const second = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/b',
+    worktree: 'id:wt-1'
+  })
+
+  const listed = await commands.browserTabList({ worktree: 'id:wt-1' })
+  expect(listed.tabs.map((tab) => [tab.browserPageId, tab.url, tab.profileId])).toEqual([
+    [first.browserPageId, 'https://example.org/a', 'default'],
+    [second.browserPageId, 'https://example.org/b', 'default']
+  ])
+  await expect(commands.browserTabSwitch({ page: first.browserPageId })).resolves.toEqual({
+    switched: 0,
+    browserPageId: first.browserPageId
+  })
+  await expect(commands.browserTabCurrent({ worktree: 'id:wt-1' })).resolves.toMatchObject({
+    tab: { browserPageId: first.browserPageId }
+  })
+  await expect(commands.browserTabShow({ page: second.browserPageId })).resolves.toMatchObject({
+    tab: { url: 'https://example.org/b' }
+  })
+  await startup.stop()
+})
+
+it('still refuses tab queries when neither an engine nor a desktop can serve them', async () => {
+  const startup = await startWithoutEngine()
+  const commands = createRuntimeBrowserCommands(pairedHost({ desktopAttached: false }).host)
+  expect(() => commands.browserTabList({})).toThrow(/unavailable/)
   await startup.stop()
 })
 

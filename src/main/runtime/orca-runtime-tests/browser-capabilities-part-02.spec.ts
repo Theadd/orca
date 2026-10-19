@@ -10,6 +10,7 @@ import {
   TEST_REPO_ID,
   TEST_WORKTREE_ID,
   TEST_WORKTREE_PATH,
+  createRuntime,
   store
 } from '../orca-runtime-test-fixtures.spec'
 
@@ -50,7 +51,7 @@ describe('OrcaRuntimeService', () => {
       isAvailable: () => false
     })
     setRuntimeBrowserUnavailableCause({ reason: 'unconfigured' })
-    const status = new OrcaRuntimeService(store as never).getStatus()
+    const status = createRuntime().getStatus()
     expect(runtimeAdvertisesBrowserClientHosting(status.capabilities)).toBe(true)
     expect(status.capabilities).toContain('browser.tab-create-known-id.v1')
     expect(status.capabilities).not.toContain('browser.headless.v1')

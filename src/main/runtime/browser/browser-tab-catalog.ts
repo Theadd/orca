@@ -8,6 +8,7 @@ import type {
   RuntimeBrowserCommandHost
 } from './browser-command-contracts'
 import type { RuntimeBrowserCommandTargets } from './browser-command-targets'
+import { clientPageTabRow } from './browser-client-page-queries'
 
 export class RuntimeBrowserTabCatalog {
   constructor(
@@ -31,23 +32,14 @@ export class RuntimeBrowserTabCatalog {
             active: clientPageActive ? false : tab.active
           }))
         : []
-    const clientTabs = clientPages.map((page, offset) => {
-      const profile =
+    const clientTabs = clientPages.map((page, offset) =>
+      clientPageTabRow(
+        page,
+        serverTabs.length + offset,
         browserSessionRegistry.getProfile(page.browserProfileId) ??
-        browserSessionRegistry.getDefaultProfile()
-      return {
-        browserPageId: page.browserPageId,
-        index: serverTabs.length + offset,
-        url: page.url,
-        title: page.title,
-        active: page.active,
-        loadError: null,
-        certificateFailure: null,
-        worktreeId: page.workspaceId,
-        profileId: profile.id,
-        profileLabel: profile.label
-      }
-    })
+          browserSessionRegistry.getDefaultProfile()
+      )
+    )
     const tabs = [...serverTabs, ...clientTabs]
     if (tabs.length > 0 && !tabs.some((tab) => tab.active)) {
       tabs[0] = { ...tabs[0]!, active: true }

@@ -6,24 +6,11 @@ import {
   setRuntimeBrowserCommandsFactory
 } from '../runtime/runtime-browser-commands-factory'
 import {
-  closeBrowserPageWithoutEngine,
-  closeRegisteredBrowserClientPage
-} from '../runtime/browser/browser-client-page-close'
-import {
-  createBrowserClientPage,
-  createBrowserPageOnPairedHost,
-  DEFAULT_BROWSER_PROFILE_ID,
-  hasPairedPageHost,
-  openBrowserUrlOnClient,
-  type BrowserClientPageCaller,
-  type BrowserClientPageCreateParams
-} from '../runtime/browser/browser-client-page-opening'
-import type { RuntimeBrowserCommandHost } from '../runtime/browser/browser-command-contracts'
-import {
   resolveOrcadBrowserProvider,
   type OrcadBrowserProvider,
   type OrcadBrowserProviderOptions
 } from './orcad-browser-provider'
+import { orcadClientPageCommand } from './orcad-client-page-commands'
 
 /** Browser discovery must not hold core RPC readiness hostage to a desktop authorization UI. */
 export function startOrcadBrowserProvider(options: OrcadBrowserProviderOptions): {
@@ -52,43 +39,10 @@ export function startOrcadBrowserProvider(options: OrcadBrowserProviderOptions):
             commands ??= provider.factory(host)
             return callBrowserCommand(commands, property, args)
           }
-          if (property === 'browserOpenUrlOnClient') {
-            // Why: the page renders on a paired desktop, so open-url never needs this host's engine.
-            return (...args: Parameters<RuntimeBrowserCommands['browserOpenUrlOnClient']>) =>
-              openBrowserUrlOnClient(host, args[0])
-          }
-          if (property === 'browserTabCreate') {
-            return (...args: Parameters<RuntimeBrowserCommands['browserTabCreate']>) => {
-              const [params, caller] = args
-              if (params?.placement?.kind === 'client') {
-                return createOrcadBrowserClientPage(
-                  host,
-                  { ...params, placement: params.placement },
-                  caller
-                )
-              }
-              // Why: with no engine here, a desktop hosting this server's pages is the only browser.
-              if (!params?.placement && !engineAvailable() && hasPairedPageHost(host)) {
-                return createBrowserPageOnPairedHost(
-                  host,
-                  params ?? {},
-                  orcadBrowserProfileId(params?.profileId)
-                )
-              }
-              return forward(args)
-            }
-          }
-          if (property === 'browserTabClose') {
-            // Why: client-hosted pages live in this runtime's registry, never in the provider.
-            return async (...args: Parameters<RuntimeBrowserCommands['browserTabClose']>) => {
-              const params = args[0] ?? {}
-              if (!engineAvailable()) {
-                return closeBrowserPageWithoutEngine(host, params, browserUnavailableError)
-              }
-              return (await closeRegisteredBrowserClientPage(host, params)) ?? forward(args)
-            }
-          }
-          return (...args: unknown[]) => forward(args)
+          return (
+            orcadClientPageCommand(host, property, forward, engineAvailable) ??
+            ((...args: unknown[]) => forward(args))
+          )
         }
       })
     },
@@ -145,23 +99,4 @@ function callBrowserCommand(
     throw new BrowserError(BROWSER_UNAVAILABLE_ERROR_CODE, `Unknown browser command: ${name}`)
   }
   return member.call(commands, ...args)
-}
-
-/** A client-placed page on a host with no profile registry. */
-async function createOrcadBrowserClientPage(
-  host: RuntimeBrowserCommandHost,
-  params: BrowserClientPageCreateParams & { worktree?: string; profileId?: string },
-  caller: BrowserClientPageCaller | undefined
-): Promise<{ browserPageId: string }> {
-  const worktree = params.worktree ? await host.resolveBrowserWorkspace(params.worktree) : undefined
-  const browserProfileId = orcadBrowserProfileId(params.profileId)
-  return createBrowserClientPage(host, params, { worktree, browserProfileId, caller })
-}
-
-// Why only the default: orcad has no profile registry to describe any other to a desktop.
-function orcadBrowserProfileId(profileId: string | undefined): string {
-  if (profileId !== undefined && profileId !== DEFAULT_BROWSER_PROFILE_ID) {
-    throw new BrowserError('invalid_argument', `Browser profile ${profileId} was not found`)
-  }
-  return DEFAULT_BROWSER_PROFILE_ID
 }

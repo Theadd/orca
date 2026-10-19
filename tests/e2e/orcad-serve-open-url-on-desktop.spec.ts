@@ -9,12 +9,12 @@
  *     tests/e2e/orcad-serve-open-url-on-desktop.spec.ts --config tests/playwright.config.ts \
  *     --project electron-headless --workers=1
  */
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
+
 import os from 'node:os'
 import path from 'node:path'
-import type { Page } from '@stablyai/playwright-test'
+import type { ElectronApplication } from '@stablyai/playwright-test'
 import { runProcess } from '@orca/process-host'
 import { RuntimeClient } from '../../src/cli/runtime/client'
 import { resolveBundledOrcadRuntime } from '../../src/main/orcad/orcad-bundled-runtime'
@@ -50,21 +50,25 @@ async function startPageServer(): Promise<{ url: string; server: Server }> {
     response.end(`<!doctype html><title>${MARKER}</title><h1 id="marker">${MARKER}</h1>`)
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, server }
+  const address = server.address()
+  if (!address || typeof address === 'string') {
+    throw new Error('page server has no TCP address')
+  }
+  return { url: `http://127.0.0.1:${address.port}/`, server }
 }
 
-async function readDesktopWebviewMarker(page: Page, url: string): Promise<string | null> {
-  return page.evaluate(async (prefix) => {
-    for (const candidate of document.querySelectorAll('webview')) {
-      const webview = candidate as Electron.WebviewTag
-      try {
-        if (webview.getURL().startsWith(prefix)) {
-          return (await webview.executeJavaScript(
-            'document.querySelector("#marker")?.textContent ?? null'
-          )) as string | null
-        }
-      } catch {
-        // The guest may still be attaching.
+/** The marker the desktop's own browser engine rendered for `url`, read from its guest. */
+async function readDesktopPageMarker(
+  app: ElectronApplication,
+  url: string
+): Promise<string | null> {
+  return app.evaluate(async ({ webContents }, prefix) => {
+    for (const contents of webContents.getAllWebContents()) {
+      if (contents.getURL().startsWith(prefix)) {
+        const marker: unknown = await contents
+          .executeJavaScript('document.querySelector("#marker")?.textContent ?? null')
+          .catch(() => null)
+        return typeof marker === 'string' ? marker : null
       }
     }
     return null
@@ -125,7 +129,10 @@ test('orca open-url on orcad serve opens the page in the paired desktop', async 
 
     // No desktop has taken this server's pages yet: a typed refusal that says what to do.
     const refused = await openUrl()
-    testInfo.attach('open-url-before-desktop.txt', { body: refused.stdout + refused.stderr })
+    writeFileSync(
+      testInfo.outputPath('open-url-before-desktop.txt'),
+      refused.stdout + refused.stderr
+    )
     expect(refused.code).not.toBe(0)
     expect(refused.stdout + refused.stderr).toContain('browser_host_unavailable')
 
@@ -161,6 +168,16 @@ test('orca open-url on orcad serve opens the page in the paired desktop', async 
       },
       { environmentId: desktop.environmentId, worktreeId }
     )
+    await expect
+      .poll(
+        () =>
+          desktop!.page.evaluate(
+            (id) => window.__store?.getState().activeGroupIdByWorktree[id] ?? null,
+            worktreeId
+          ),
+        { timeout: 60_000, message: 'the server workspace never got a tab group on the desktop' }
+      )
+      .not.toBeNull()
     await desktop.page.evaluate(async () => {
       const state = window.__store?.getState()
       const groupId = state?.activeWorktreeId
@@ -183,12 +200,12 @@ test('orca open-url on orcad serve opens the page in the paired desktop', async 
         { timeout: 60_000, intervals: [2_000] }
       )
       .toBe(0)
-    testInfo.attach('open-url-with-desktop.txt', { body: opened!.stdout + opened!.stderr })
+    writeFileSync(testInfo.outputPath('open-url-with-desktop.txt'), opened!.stdout + opened!.stderr)
     const browserPageId = JSON.parse(opened!.stdout).result.browserPageId
     expect(browserPageId).toEqual(expect.any(String))
 
     await expect
-      .poll(() => readDesktopWebviewMarker(desktop!.page, page.url), {
+      .poll(() => readDesktopPageMarker(desktop!.app, page.url), {
         timeout: 60_000,
         message: "the desktop never rendered the server's loopback page"
       })
@@ -210,10 +227,25 @@ test('orca open-url on orcad serve opens the page in the paired desktop', async 
       { remotePageId: browserPageId, worktreeId }
     )
     expect(placement).toBe('client')
-    await testInfo.attach('desktop-with-open-url-page.png', {
-      body: await desktop.page.screenshot(),
-      contentType: 'image/png'
+    await desktop.page.screenshot({ path: testInfo.outputPath('desktop-with-open-url-page.png') })
+    const tabs = await runProcess({
+      program: process.execPath,
+      args: [
+        path.join(process.cwd(), 'out', 'cli', 'index.js'),
+        'tab',
+        'list',
+        '--worktree',
+        worktree,
+        '--json'
+      ],
+      env: { ...profile.env, ORCA_USER_DATA: profile.userDataDir },
+      timeoutMs: 30_000
     })
+    writeFileSync(testInfo.outputPath('tab-list-with-desktop.txt'), tabs.stdout + tabs.stderr)
+    expect(tabs.code, tabs.stderr).toBe(0)
+    expect(JSON.parse(tabs.stdout).result.tabs).toContainEqual(
+      expect.objectContaining({ browserPageId, url: page.url })
+    )
   } finally {
     await desktop?.dispose()
     await new Promise((settle) => page.server.close(settle))

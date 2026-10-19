@@ -4,6 +4,7 @@ import type { RuntimeStatus } from '../../../shared/runtime-types'
 import { toRuntimeExecutionHostId, toSshExecutionHostId } from '../../../shared/execution-host'
 import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { BROWSER_CLIENT_HOSTING_RUNTIME_CAPABILITIES } from '../../../shared/browser-client-hosting-eligibility'
+import type { PublicKnownRuntimeEnvironment } from '../../../shared/runtime-environments'
 import {
   FLOATING_BROWSER_UNAVAILABLE_MESSAGE,
   LOCAL_BROWSER_UNAVAILABLE_MESSAGE,
@@ -14,7 +15,8 @@ import {
   assertRuntimeManagedBrowserCreationAvailable,
   getClientCreationActionPolicy,
   resolveClientCreationActionPolicy,
-  runtimeHostsPagesOnThisDesktop
+  runtimeHostsPagesOnThisDesktop,
+  type RuntimeBrowserHostingState
 } from './client-creation-action-policy'
 
 function runtimeStatus(capabilities?: string[]): RuntimeStatus {
@@ -213,49 +215,58 @@ describe('client creation action guards', () => {
 })
 
 describe('a runtime whose pages this desktop hosts', () => {
-  const CLIENT_HOSTING = [...BROWSER_CLIENT_HOSTING_RUNTIME_CAPABILITIES]
-  function desktopState(environment: { id: string; orcadDeployment?: unknown }) {
+  function hostingState(
+    environment: Pick<PublicKnownRuntimeEnvironment, 'id' | 'orcadDeployment'>,
+    settings: RuntimeBrowserHostingState['settings'] = {}
+  ): RuntimeBrowserHostingState {
     return {
-      settings: { activeRuntimeEnvironmentId: environment.id },
+      settings,
       runtimeEnvironments: [environment],
       runtimeStatusByEnvironmentId: new Map([
-        [environment.id, { status: runtimeStatus(CLIENT_HOSTING), checkedAt: 1 }]
+        [
+          environment.id,
+          { status: runtimeStatus([...BROWSER_CLIENT_HOSTING_RUNTIME_CAPABILITIES]) }
+        ]
       ])
     }
   }
 
   it('creates runtime-placed tabs for a paired server with no browser of its own', () => {
-    const state = desktopState({ id: 'orcad-server' })
-    expect(runtimeHostsPagesOnThisDesktop(state as never, 'orcad-server')).toBe(true)
-    expect(getClientCreationActionPolicy(state as never, null)['managed-browser']).toEqual({
-      state: 'enabled',
-      provider: 'paired-runtime'
-    })
-    expect(() =>
-      assertRuntimeManagedBrowserCreationAvailable(state as never, 'orcad-server')
-    ).not.toThrow()
+    const state = hostingState({ id: 'orcad-server' })
+    expect(runtimeHostsPagesOnThisDesktop(state, 'orcad-server')).toBe(true)
+    expect(() => assertRuntimeManagedBrowserCreationAvailable(state, 'orcad-server')).not.toThrow()
+    expect(
+      resolveClientCreationActionPolicy({
+        surface: 'electron',
+        runtimeStatus: runtimeStatus(),
+        runtimeHostsPagesOnThisDesktop: true
+      })['managed-browser']
+    ).toEqual({ state: 'enabled', provider: 'paired-runtime' })
   })
 
   it('keeps a managed SSH deployment on its desktop tabs and SSH browser route', () => {
-    const state = desktopState({
+    const state = hostingState({
       id: 'managed-ssh',
-      orcadDeployment: { kind: 'ssh', sshTargetId: 'target-1', sshTargetGeneration: 1 }
+      orcadDeployment: {
+        sshTargetId: 'target-1',
+        sshTargetGeneration: 1,
+        localPort: 1,
+        remotePort: 2
+      }
     })
-    expect(runtimeHostsPagesOnThisDesktop(state as never, 'managed-ssh')).toBe(false)
-    expect(getClientCreationActionPolicy(state as never, null)['managed-browser']).toEqual({
-      state: 'enabled',
-      provider: 'local-client'
-    })
+    expect(runtimeHostsPagesOnThisDesktop(state, 'managed-ssh')).toBe(false)
+    expect(() => assertRuntimeManagedBrowserCreationAvailable(state, 'managed-ssh')).toThrow()
   })
 
   it('stays off when desktop-hosted remote pages are turned off, and in the web client', () => {
-    const state = desktopState({ id: 'orcad-server' })
-    const disabled = {
-      ...state,
-      settings: { ...state.settings, browserClientHostedRemoteEnabled: false }
-    }
-    expect(runtimeHostsPagesOnThisDesktop(disabled as never, 'orcad-server')).toBe(false)
+    const disabled = hostingState(
+      { id: 'orcad-server' },
+      { browserClientHostedRemoteEnabled: false }
+    )
+    expect(runtimeHostsPagesOnThisDesktop(disabled, 'orcad-server')).toBe(false)
     vi.stubGlobal('__ORCA_WEB_CLIENT__', true)
-    expect(runtimeHostsPagesOnThisDesktop(state as never, 'orcad-server')).toBe(false)
+    expect(
+      runtimeHostsPagesOnThisDesktop(hostingState({ id: 'orcad-server' }), 'orcad-server')
+    ).toBe(false)
   })
 })
