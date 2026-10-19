@@ -99,6 +99,12 @@ test('runs a provider machine through create, connect, sleep, wake and delete', 
         managedEnvironmentId: expect.any(String)
       })
     ])
+    // That server is retired: kept for the link, never dialed again.
+    const gone = (await machineSnapshot(orcaPage))?.machines[0]
+    const environments = await orcaPage.evaluate(() => window.api.runtimeEnvironments.list())
+    expect(
+      environments.find((environment) => environment.id === gone?.managedEnvironmentId)
+    ).toMatchObject({ retiredAt: expect.any(String) })
   } finally {
     provider?.cleanup()
   }
