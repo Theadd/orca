@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   resolveOpenAiTranscriptionUrl,
   sanitizeOpenAiTranscriptionErrorMessage
@@ -23,18 +23,8 @@ describe('sanitizeOpenAiTranscriptionErrorMessage', () => {
 })
 
 describe('resolveOpenAiTranscriptionUrl', () => {
-  const originalBaseUrl = process.env.OPENAI_BASE_URL
-
-  beforeEach(() => {
-    delete process.env.OPENAI_BASE_URL
-  })
-
   afterEach(() => {
-    if (originalBaseUrl === undefined) {
-      delete process.env.OPENAI_BASE_URL
-    } else {
-      process.env.OPENAI_BASE_URL = originalBaseUrl
-    }
+    vi.unstubAllEnvs()
   })
 
   it('defaults to the hosted OpenAI endpoint', () => {
@@ -43,22 +33,36 @@ describe('resolveOpenAiTranscriptionUrl', () => {
     )
   })
 
-  it('honours OPENAI_BASE_URL for a local gateway', () => {
-    process.env.OPENAI_BASE_URL = 'http://127.0.0.1:20128'
+  it('honours OPENAI_BASE_URL for a local gateway without /v1', () => {
+    vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:20128')
+    expect(resolveOpenAiTranscriptionUrl()).toBe(
+      'http://127.0.0.1:20128/v1/audio/transcriptions'
+    )
+  })
+
+  it('does not double /v1 when override already includes /v1', () => {
+    vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:20128/v1')
     expect(resolveOpenAiTranscriptionUrl()).toBe(
       'http://127.0.0.1:20128/v1/audio/transcriptions'
     )
   })
 
   it('normalises trailing slashes and surrounding whitespace', () => {
-    process.env.OPENAI_BASE_URL = ' http://127.0.0.1:20128/// '
+    vi.stubEnv('OPENAI_BASE_URL', ' https://my-gw.example/v1/ ')
     expect(resolveOpenAiTranscriptionUrl()).toBe(
-      'http://127.0.0.1:20128/v1/audio/transcriptions'
+      'https://my-gw.example/v1/audio/transcriptions'
+    )
+  })
+
+  it('treats blank env as unset', () => {
+    vi.stubEnv('OPENAI_BASE_URL', '   ')
+    expect(resolveOpenAiTranscriptionUrl()).toBe(
+      'https://api.openai.com/v1/audio/transcriptions'
     )
   })
 
   it('prefers an explicit base URL over the environment', () => {
-    process.env.OPENAI_BASE_URL = 'http://127.0.0.1:20128'
+    vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:20128')
     expect(resolveOpenAiTranscriptionUrl('https://gateway.internal')).toBe(
       'https://gateway.internal/v1/audio/transcriptions'
     )
