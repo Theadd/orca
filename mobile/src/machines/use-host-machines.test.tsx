@@ -3,7 +3,7 @@ import { act, create } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { appStateListeners, listRequest, wakeRequest } = vi.hoisted(() => ({
-  appStateListeners: [] as ((state: string) => void)[],
+  appStateListeners: new Array<(state: string) => void>(),
   listRequest: vi.fn(),
   wakeRequest: vi.fn()
 }))
