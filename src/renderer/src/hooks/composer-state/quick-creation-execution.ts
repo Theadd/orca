@@ -169,8 +169,9 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
           ? {
               sourceRepoId: repoId,
               projectId: selectedWorkspaceTarget.target.projectId,
-              providerKey: machineSelection.selected.providerKey,
-              machineId: machineSelection.selected.machineId
+              providerKey: machineSelection.selected.machine.providerKey,
+              machineId: machineSelection.selected.machine.machineId,
+              machineName: machineSelection.selected.machine.name
             }
           : undefined
 

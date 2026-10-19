@@ -1265,11 +1265,10 @@
         "preparingWorkspace": "Preparing workspace…",
         "creatingWorktree": "Creating worktree…",
         "fetchingBaseBranch": "Fetching base branch…",
-        "startingMachine": "Starting machine…"
+        "startingMachine": "Starting machine…",
+        "settingUpRepo": "Setting up repo…"
       },
       "machineWorktreeCreation": {
-        "machineGone": "This machine is gone.",
-        "noProjectRoot": "The provider did not say where projects live on this machine.",
         "noCloneUrl": "This project has no remote to clone onto the machine.",
         "cloneFailed": "Couldn’t set up the project on the machine."
       },
@@ -1277,7 +1276,17 @@
         "machineCopy": {
           "deletesAt": "Deletes {{time}}",
           "cantReach": "Can’t reach",
-          "cantReachSeen": "Can’t reach · seen {{ago}} ago"
+          "cantReachSeen": "Can’t reach · seen {{ago}} ago",
+          "deletesAtLower": "deletes {{time}}",
+          "temporary": "Temporary",
+          "persistent": "Persistent",
+          "failureSignIn": "The provider needs you to sign in again.",
+          "failureNotFound": "The provider no longer has this machine.",
+          "failureQuota": "The provider is out of room for more machines.",
+          "failureTimeout": "The provider didn’t answer in time.",
+          "failureUnsupported": "The provider can’t do that for this machine.",
+          "failureCancelled": "It was canceled.",
+          "failureUnavailable": "The provider ran into a problem."
         },
         "machineDisplayState": {
           "starting": "Starting",
@@ -1288,7 +1297,28 @@
           "gone": "Gone"
         },
         "machineWakeOnOpen": {
-          "wakeFailed": "Couldn’t wake {{name}}"
+          "wakeFailed": "Couldn’t wake {{name}}",
+          "waking": "Waking {{name}}…",
+          "wakeFailedUnknown": "Orca couldn’t reach the machine’s provider."
+        },
+        "machineCreationStages": {
+          "waking": "Waking…",
+          "connecting": "Connecting…",
+          "cloning": "Cloning…",
+          "fetching": "Fetching base branch…",
+          "creatingWorktree": "Creating worktree…",
+          "startingMachine": "Starting machine",
+          "settingUpRepo": "Setting up repo",
+          "startingAgent": "Starting agent",
+          "openingTerminal": "Opening terminal"
+        },
+        "machineStart": {
+          "readFailed": "Couldn’t reach {{name}}.",
+          "gone": "{{name}} is gone.",
+          "wakeFailed": "Couldn’t wake {{name}}.",
+          "connectFailed": "Couldn’t connect to {{name}}.",
+          "noProjectRoot": "The provider didn’t say where projects live on {{name}}.",
+          "noServer": "Orca couldn’t start its server on {{name}}, which it needs to set up the project."
         }
       }
     },
@@ -3200,6 +3230,15 @@
             "vmProvisioningTitle": "Provisioning VM",
             "cancelProvisioning": "Cancel",
             "vmProvisioningLogEmpty": "Waiting for recipe output…"
+          },
+          "MachineCreationStatus": {
+            "failedTitle": "Couldn’t set up {{name}}",
+            "title": "Setting up {{name}}",
+            "machineOn": "{{machine}} on {{provider}}",
+            "retry": "Retry",
+            "removeWorktree": "Remove worktree",
+            "showLog": "Show log",
+            "logEmpty": "Waiting for provider output…"
           }
         }
       },
@@ -14828,10 +14867,14 @@
             "showFewer": "Show fewer",
             "showAll": "Show all ({{count}})",
             "archived": "Archived ({{count}})",
-            "newMachine": "New machine on {{provider}}…",
             "signIn": "Sign in to {{provider}}",
             "retry": "Retry {{provider}}",
-            "showDetails": "Show details"
+            "showDetails": "Show details",
+            "noMachines": "No machines"
+          },
+          "RunTargetRowList": {
+            "sshHosts": "SSH hosts",
+            "otherHosts": "Other hosts"
           }
         }
       },

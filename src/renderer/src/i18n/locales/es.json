@@ -1083,7 +1083,62 @@
         "settingUpWorkspace": "Configurando tu espacio de trabajo…",
         "preparingWorkspace": "Preparando el espacio de trabajo…",
         "creatingWorktree": "Creando el worktree…",
-        "fetchingBaseBranch": "Obteniendo la rama base…"
+        "fetchingBaseBranch": "Obteniendo la rama base…",
+        "startingMachine": "Iniciando máquina…",
+        "settingUpRepo": "Configurando repositorio…"
+      },
+      "machineWorktreeCreation": {
+        "noCloneUrl": "Este proyecto no tiene un remoto para clonar en la máquina.",
+        "cloneFailed": "No se pudo configurar el proyecto en la máquina."
+      },
+      "machines": {
+        "machineCopy": {
+          "deletesAt": "Se elimina a las {{time}}",
+          "cantReach": "No se puede conectar",
+          "cantReachSeen": "No se puede conectar · visto hace {{ago}}",
+          "deletesAtLower": "se elimina a las {{time}}",
+          "temporary": "Temporal",
+          "persistent": "Persistente",
+          "failureSignIn": "El proveedor necesita que vuelvas a iniciar sesión.",
+          "failureNotFound": "El proveedor ya no tiene esta máquina.",
+          "failureQuota": "El proveedor no tiene espacio para más máquinas.",
+          "failureTimeout": "El proveedor no respondió a tiempo.",
+          "failureUnsupported": "El proveedor no puede hacer eso con esta máquina.",
+          "failureCancelled": "Se canceló.",
+          "failureUnavailable": "El proveedor tuvo un problema."
+        },
+        "machineDisplayState": {
+          "starting": "Iniciando",
+          "running": "En ejecución",
+          "sleeping": "En reposo",
+          "archived": "Archivada",
+          "unreachable": "Inaccesible",
+          "gone": "Eliminada"
+        },
+        "machineWakeOnOpen": {
+          "wakeFailed": "No se pudo activar {{name}}",
+          "waking": "Activando {{name}}…",
+          "wakeFailedUnknown": "Orca no pudo contactar con el proveedor de la máquina."
+        },
+        "machineCreationStages": {
+          "waking": "Activando…",
+          "connecting": "Conectando…",
+          "cloning": "Clonando…",
+          "fetching": "Obteniendo la rama base…",
+          "creatingWorktree": "Creando worktree…",
+          "startingMachine": "Iniciando máquina",
+          "settingUpRepo": "Configurando repositorio",
+          "startingAgent": "Iniciando agente",
+          "openingTerminal": "Abriendo terminal"
+        },
+        "machineStart": {
+          "readFailed": "No se pudo contactar con {{name}}.",
+          "gone": "{{name}} ya no existe.",
+          "wakeFailed": "No se pudo activar {{name}}.",
+          "connectFailed": "No se pudo conectar con {{name}}.",
+          "noProjectRoot": "El proveedor no indicó dónde van los proyectos en {{name}}.",
+          "noServer": "Orca no pudo iniciar su servidor en {{name}}, que necesita para configurar el proyecto."
+        }
       }
     },
     "hooks": {
@@ -1805,7 +1860,9 @@
         "defaultBranchUpdateFailed": "No se pudo actualizar la rama predeterminada del proyecto. Inténtalo de nuevo.",
         "setLocation": "Establecer ubicación del proyecto",
         "setLocationOnHost": "Establecer ubicación del proyecto en {{host}}",
-        "setLocationTooltip": "Elige una carpeta o clona este proyecto en {{host}}."
+        "setLocationTooltip": "Elige una carpeta o clona este proyecto en {{host}}.",
+        "machineFromPlugin": "Máquina desde un plugin…",
+        "machineFromPluginHint": "Busca un plugin proveedor de máquinas"
       },
       "NewWorkspaceComposerModal": {
         "createWorktree": "Crear worktree",
@@ -2944,6 +3001,15 @@
             "vmProvisioningTitle": "Provisionando VM",
             "cancelProvisioning": "Cancelar",
             "vmProvisioningLogEmpty": "Esperando output de la receta..."
+          },
+          "MachineCreationStatus": {
+            "failedTitle": "No se pudo configurar {{name}}",
+            "title": "Configurando {{name}}",
+            "machineOn": "{{machine}} en {{provider}}",
+            "retry": "Reintentar",
+            "removeWorktree": "Quitar worktree",
+            "showLog": "Mostrar registro",
+            "logEmpty": "Esperando la salida del proveedor…"
           }
         }
       },
@@ -14515,6 +14581,21 @@
             "cloneFromUrl": "Clonar desde URL",
             "cloneFromUrlHelp": "Clona este repositorio en {{host}}.",
             "saveLocation": "Establecer ubicación"
+          },
+          "RunTargetMachineRow": {
+            "differentAccount": "Sesión iniciada con otra cuenta",
+            "invalidResponse": "Envió una respuesta no válida",
+            "showFewer": "Mostrar menos",
+            "showAll": "Mostrar todas ({{count}})",
+            "archived": "Archivadas ({{count}})",
+            "signIn": "Iniciar sesión en {{provider}}",
+            "retry": "Reintentar {{provider}}",
+            "showDetails": "Mostrar detalles",
+            "noMachines": "Sin máquinas"
+          },
+          "RunTargetRowList": {
+            "sshHosts": "Hosts SSH",
+            "otherHosts": "Otros hosts"
           }
         }
       },

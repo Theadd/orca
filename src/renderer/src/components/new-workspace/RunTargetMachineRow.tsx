@@ -7,14 +7,13 @@ import {
   ChevronUp,
   Info,
   LogIn,
-  Plus,
   RefreshCw
 } from 'lucide-react'
 import { translate } from '@/i18n/i18n'
 import { MachineStateLabel } from '@/components/machines/MachineStateLabel'
 import { formatMachineExpiry, formatProviderUnreachable } from '@/lib/machines/machine-copy'
 import type { MachineGroupOption } from '@/lib/machines/machine-group-options'
-import { RunTargetRow } from './RunTargetComboboxRow'
+import { RunTargetGroupHeader, RunTargetRow } from './RunTargetComboboxRow'
 import type { MachineRowModel } from './run-target-machine-rows'
 
 const ICON = 'size-3.5 shrink-0 text-muted-foreground'
@@ -34,29 +33,25 @@ function groupAside(group: MachineGroupOption, now: number): string | null {
         'Sent an invalid response'
       )
     case 'ready':
+      return group.machines.length + group.archived.length === 0
+        ? translate('auto.components.new.workspace.RunTargetMachineRow.noMachines', 'No machines')
+        : null
     case 'sign-in':
       return null
   }
 }
 
-/** A provider's label inside the run-target list; labels a group, never armed. */
+/** A provider's label inside the run-target list; labels its group, never armed. */
 export function RunTargetMachineGroupHeader({
+  id,
   group,
   now
 }: {
+  id: string
   group: MachineGroupOption
   now: number
 }): React.JSX.Element {
-  const aside = groupAside(group, now)
-  return (
-    <div
-      role="presentation"
-      className="flex items-baseline gap-2 px-2 pb-1 pt-2.5 text-2xs font-medium text-muted-foreground"
-    >
-      <span className="truncate">{group.name}</span>
-      {aside ? <span className="ml-auto shrink-0 truncate font-normal">{aside}</span> : null}
-    </div>
-  )
+  return <RunTargetGroupHeader id={id} label={group.name} aside={groupAside(group, now)} />
 }
 
 function rowContent(row: Exclude<MachineRowModel, { kind: 'machine-group' }>): {
@@ -105,16 +100,6 @@ function rowContent(row: Exclude<MachineRowModel, { kind: 'machine-group' }>): {
         ),
         detail: '',
         dimmed: true
-      }
-    case 'machine-create':
-      return {
-        icon: <Plus className={ICON} />,
-        label: translate(
-          'auto.components.new.workspace.RunTargetMachineRow.newMachine',
-          'New machine on {{provider}}…',
-          { provider }
-        ),
-        detail: ''
       }
     case 'machine-sign-in':
       return {

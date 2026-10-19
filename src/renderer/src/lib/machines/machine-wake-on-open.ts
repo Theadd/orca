@@ -1,26 +1,28 @@
 import { toast } from 'sonner'
-import type { MachineActionResult, MachineRecord } from '../../../../shared/machine-inventory'
-import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
+import type { MachineProviderErrorCode } from '../../../../shared/machine-provider-protocol'
 import { getMachineSources } from '@/store/machines'
 import { translate } from '@/i18n/i18n'
 import { machineNeedsWake } from './machine-display-state'
+import { describeMachineFailure } from './machine-copy'
 import { findMachineForHost, machineTargetKey, type MachineMatch } from './machine-host-match'
+import { wakeMachine } from './machine-wake'
 
-const wakesInFlight = new Map<string, Promise<void>>()
+const opensInFlight = new Map<string, Promise<void>>()
 
-async function wake(match: MachineMatch): Promise<MachineActionResult<MachineRecord>> {
+type WakeOutcome = { ok: true } | { ok: false; code: MachineProviderErrorCode | null }
+
+async function wakeAndConnect(match: MachineMatch): Promise<WakeOutcome> {
   const target = { providerKey: match.snapshot.providerKey, machineId: match.machine.id }
-  if (match.environmentId === null) {
-    const woken = await window.api.machines.wake(target)
-    // Why: reconnecting now spares the terminal its first reconnect attempt against a cold host.
-    return woken.ok ? window.api.machines.connect(target).then(() => woken) : woken
+  const woken = await wakeMachine(target, { environmentId: match.environmentId })
+  if (!woken.ok) {
+    return { ok: false, code: woken.code }
   }
-  // Why: a paired server's provider wakes its own machine; this app only asks.
-  return callRuntimeRpc<MachineActionResult<MachineRecord>>(
-    { kind: 'environment', environmentId: match.environmentId },
-    'machines.wake',
-    target
-  )
+  if (match.environmentId !== null) {
+    return { ok: true }
+  }
+  // Why: reconnecting now spares the terminal its first reconnect attempt against a cold host.
+  const connected = await window.api.machines.connect(target)
+  return connected.ok ? { ok: true } : { ok: false, code: connected.code }
 }
 
 /**
@@ -36,28 +38,40 @@ export function wakeMachineForHost(hostId: string | null | undefined): Promise<v
     providerKey: match.snapshot.providerKey,
     machineId: match.machine.id
   })
-  const existing = wakesInFlight.get(key)
+  const existing = opensInFlight.get(key)
   if (existing) {
     return existing
   }
-  const reportFailure = (description: string): void => {
+  const name = match.machine.name
+  const toastId = toast.loading(
+    translate('auto.lib.machines.machineWakeOnOpen.waking', 'Waking {{name}}…', { name })
+  )
+  const reportFailure = (code: MachineProviderErrorCode | null): void => {
     toast.error(
       translate('auto.lib.machines.machineWakeOnOpen.wakeFailed', 'Couldn’t wake {{name}}', {
-        name: match.machine.name
+        name
       }),
-      { description }
+      {
+        id: toastId,
+        description: code
+          ? describeMachineFailure(code)
+          : translate(
+              'auto.lib.machines.machineWakeOnOpen.wakeFailedUnknown',
+              'Orca couldn’t reach the machine’s provider.'
+            )
+      }
     )
   }
-  const run = wake(match)
-    .then((result) => {
-      if (!result.ok) {
-        reportFailure(result.message)
+  const run = wakeAndConnect(match)
+    .then((outcome) => {
+      if (outcome.ok) {
+        toast.dismiss(toastId)
+      } else {
+        reportFailure(outcome.code)
       }
     })
-    .catch((error: unknown) =>
-      reportFailure(error instanceof Error ? error.message : String(error))
-    )
-    .finally(() => wakesInFlight.delete(key))
-  wakesInFlight.set(key, run)
+    .catch(() => reportFailure(null))
+    .finally(() => opensInFlight.delete(key))
+  opensInFlight.set(key, run)
   return run
 }

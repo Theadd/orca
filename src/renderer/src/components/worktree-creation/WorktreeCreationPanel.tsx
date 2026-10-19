@@ -10,6 +10,8 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { translate } from '@/i18n/i18n'
 import WorktreeCreationTabStrip from './WorktreeCreationTabStrip'
+import CreationOutputLog from './CreationOutputLog'
+import MachineCreationStatus from './MachineCreationStatus'
 
 /**
  * In-frame creation state, shown in the workspace content area while a worktree
@@ -68,7 +70,13 @@ export default function WorktreeCreationPanel({
           fill — the same spot terminal output appears — so creation → terminal
           reads as one frame filling in. */}
       <div className="min-h-0 flex-1 p-3">
-        {isVmCreation ? (
+        {entry.request.machine ? (
+          <MachineCreationStatus
+            entry={entry}
+            onRetry={() => retryBackgroundWorktreeCreation(creationId)}
+            onRemove={dismiss}
+          />
+        ) : isVmCreation ? (
           // Why: keep the same centered layout for provisioning AND failure so the recipe log stays
           // put — on failure the spinner header just swaps to the error + Retry/Dismiss.
           <VmProvisioningStatus
@@ -230,7 +238,7 @@ function VmProvisioningStatus({
             </>
           )}
         </div>
-        <RecipeOutputLog
+        <CreationOutputLog
           log={log}
           emptyLabel={translate(
             'auto.components.worktree.creation.WorktreeCreationPanel.vmProvisioningLogEmpty',
@@ -239,44 +247,6 @@ function VmProvisioningStatus({
         />
       </div>
     </div>
-  )
-}
-
-// Why: the recipe's stderr is the only thing that explains a failure or a slow
-// provision, so it gets the same fixed-height log surface whether provisioning is
-// in progress or has failed.
-function RecipeOutputLog({
-  log,
-  emptyLabel
-}: {
-  log: string
-  emptyLabel: string
-}): React.JSX.Element {
-  const ref = React.useRef<HTMLPreElement>(null)
-  // Why: follow the tail as output streams in, but stop following the moment the user scrolls up so
-  // they can read earlier output. Resume following once they scroll back to the bottom.
-  const pinnedToBottomRef = React.useRef(true)
-  const handleScroll = React.useCallback((): void => {
-    const el = ref.current
-    if (!el) {
-      return
-    }
-    pinnedToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8
-  }, [])
-  React.useEffect(() => {
-    const el = ref.current
-    if (el && pinnedToBottomRef.current) {
-      el.scrollTop = el.scrollHeight
-    }
-  }, [log])
-  return (
-    <pre
-      ref={ref}
-      onScroll={handleScroll}
-      className="scrollbar-sleek h-72 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-3 font-mono text-[11px] leading-4 text-muted-foreground"
-    >
-      {log || <span className="text-muted-foreground/60">{emptyLabel}</span>}
-    </pre>
   )
 }
 

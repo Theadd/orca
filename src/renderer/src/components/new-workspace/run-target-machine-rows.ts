@@ -1,4 +1,5 @@
 import type { MachineGroupOption, MachineOption } from '@/lib/machines/machine-group-options'
+import { machineTargetKey } from '@/lib/machines/machine-host-match'
 
 /** Rows shown per provider before "Show all". */
 export const MACHINE_GROUP_ROW_CAP = 3
@@ -10,13 +11,12 @@ export type MachineRowModel =
   | { key: string; kind: 'machine'; group: MachineGroupOption; machine: MachineOption }
   | { key: string; kind: 'machine-more'; group: MachineGroupOption; expanded: boolean }
   | { key: string; kind: 'machine-archived'; group: MachineGroupOption; open: boolean }
-  | { key: string; kind: 'machine-create'; group: MachineGroupOption }
   | { key: string; kind: 'machine-sign-in'; group: MachineGroupOption }
   | { key: string; kind: 'machine-retry'; group: MachineGroupOption }
   | { key: string; kind: 'machine-details'; group: MachineGroupOption }
 
 export function machineRowKey(machine: Pick<MachineOption, 'providerKey' | 'machineId'>): string {
-  return `machine:${machine.providerKey}/${machine.machineId}`
+  return `machine:${machineTargetKey(machine)}`
 }
 
 function machineRow(group: MachineGroupOption, machine: MachineOption): MachineRowModel {
@@ -61,9 +61,6 @@ function groupRows(group: MachineGroupOption, view: MachineGroupView): MachineRo
   if (overflow) {
     rows.push({ key: `machine-more:${key}`, kind: 'machine-more', group, expanded: view.expanded })
   }
-  if (group.canCreate) {
-    rows.push({ key: `machine-create:${key}`, kind: 'machine-create', group })
-  }
   return rows
 }
 
@@ -74,9 +71,6 @@ function searchRows(group: MachineGroupOption, query: string): MachineRowModel[]
   // Why: search reaches every machine, archived ones included, with no cap.
   const found = [...group.machines.filter(matches), ...group.archived.filter(matches)]
   const rows = found.map((machine) => machineRow(group, machine))
-  if (providerMatches && group.status.kind === 'ready' && group.canCreate) {
-    rows.push({ key: `machine-create:${group.providerKey}`, kind: 'machine-create', group })
-  }
   return rows.length > 0
     ? [{ key: `machine-group:${group.providerKey}`, kind: 'machine-group', group }, ...rows]
     : []

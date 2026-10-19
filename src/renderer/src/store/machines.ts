@@ -1,89 +1,74 @@
 import { useEffect, useMemo } from 'react'
-import { create } from 'zustand'
 import type {
   MachineActionResult,
   MachineProviderSnapshot
 } from '../../../shared/machine-inventory'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
-import type { MachineSources } from '@/lib/machines/machine-host-match'
-import { useAppStore } from '@/store'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
+import { installWindowVisibilityInterval } from '@/lib/window-visibility-interval'
 import {
-  getRuntimeSshAccess,
-  type PublicKnownRuntimeEnvironment
-} from '../../../shared/runtime-environments'
+  findMachineForHost,
+  type MachineMatch,
+  type MachineSources
+} from '@/lib/machines/machine-host-match'
+import { useAppStore } from '@/store'
+import type { AppState } from '@/store/types'
 
-type MachinesState = {
-  /** Providers this app runs, as last pushed by main. */
-  providers: Readonly<Record<string, MachineProviderSnapshot>>
-  /** Paired servers' inventories; an empty list also stands for a server without machines. */
-  environmentProviders: Readonly<Record<string, readonly MachineProviderSnapshot[]>>
-  applySnapshot: (snapshot: MachineProviderSnapshot) => void
-  setSnapshots: (snapshots: readonly MachineProviderSnapshot[]) => void
-  setEnvironmentSnapshots: (
-    environmentId: string,
-    snapshots: readonly MachineProviderSnapshot[]
-  ) => void
-}
+// Freshness while machines are on screen: states and expiry stay within a minute.
+const VISIBLE_LIST_MAX_AGE_MS = 60_000
 
-export const useMachinesStore = create<MachinesState>()((set) => ({
-  providers: {},
-  environmentProviders: {},
-  applySnapshot: (snapshot) =>
-    set((state) => ({ providers: { ...state.providers, [snapshot.providerKey]: snapshot } })),
-  setSnapshots: (snapshots) =>
-    set({
-      providers: Object.fromEntries(snapshots.map((snapshot) => [snapshot.providerKey, snapshot]))
-    }),
-  setEnvironmentSnapshots: (environmentId, snapshots) =>
-    set((state) => ({
-      environmentProviders: { ...state.environmentProviders, [environmentId]: snapshots }
-    }))
-}))
+let subscribed = false
+let loadState: 'idle' | 'loading' | 'ready' = 'idle'
 
-export function hasMachineProviders(): boolean {
-  return Object.keys(useMachinesStore.getState().providers).length > 0
-}
-
-let changeSubscriptionStarted = false
-
-/** Loads the cached inventories and follows main's pushes; safe to call repeatedly. */
+/** Loads the cached inventories and follows main's pushes; retries a failed load on the next call. */
 export function ensureMachinesLoaded(): void {
   const machinesApi = window.api?.machines
-  if (changeSubscriptionStarted || !machinesApi) {
+  if (!machinesApi) {
     return
   }
-  changeSubscriptionStarted = true
-  machinesApi.onChanged((snapshot) => useMachinesStore.getState().applySnapshot(snapshot))
-  void machinesApi.snapshots().then((result) => {
-    if (result.ok) {
-      useMachinesStore.getState().setSnapshots(result.value)
+  if (!subscribed) {
+    subscribed = true
+    machinesApi.onChanged((snapshot) => useAppStore.getState().applyMachineSnapshot(snapshot))
+  }
+  if (loadState !== 'idle') {
+    return
+  }
+  loadState = 'loading'
+  machinesApi.snapshots().then(
+    (result) => {
+      if (!result.ok) {
+        loadState = 'idle'
+        return
+      }
+      loadState = 'ready'
+      // Why: a push that landed while this was in flight is newer, and the slice keeps it.
+      for (const snapshot of result.value) {
+        useAppStore.getState().applyMachineSnapshot(snapshot)
+      }
+    },
+    () => {
+      loadState = 'idle'
     }
-  })
+  )
 }
 
-/** Follows machine inventories while machines are enabled; mounted once near the app root. */
-export function useMachineInventory(enabled: boolean): void {
-  useEffect(() => {
-    if (enabled) {
-      ensureMachinesLoaded()
-    }
-  }, [enabled])
-}
-
-/** Re-lists every provider older than `maxAgeMs`; results arrive through the change push. */
+/** Re-lists this app's providers older than `maxAgeMs`; results arrive through the change push. */
 export function refreshMachineProviders(maxAgeMs: number): void {
   const machinesApi = window.api?.machines
   if (!machinesApi) {
     return
   }
-  for (const { providerKey } of Object.values(useMachinesStore.getState().providers)) {
+  for (const { providerKey } of Object.values(useAppStore.getState().machineProviders)) {
     void machinesApi.list({ providerKey, maxAgeMs })
   }
 }
 
-/** Reads a paired server's inventory; an older server without machines reads as empty. */
+/**
+ * Reads a paired server's machines. Only a server without machine methods reads as having none;
+ * losing contact keeps what was last seen, since it says nothing about the machines.
+ */
 export async function loadEnvironmentMachines(environmentId: string): Promise<void> {
-  let snapshots: readonly MachineProviderSnapshot[] = []
+  const store = useAppStore.getState()
   try {
     const result = await callRuntimeRpc<MachineActionResult<MachineProviderSnapshot[]>>(
       { kind: 'environment', environmentId },
@@ -91,57 +76,99 @@ export async function loadEnvironmentMachines(environmentId: string): Promise<vo
       {},
       { suppressFeatureInteraction: true }
     )
-    snapshots = result.ok ? result.value : []
-  } catch {
-    // Why: `method_not_found` from an older server means it has no machine UI to show.
-    snapshots = []
-  }
-  useMachinesStore.getState().setEnvironmentSnapshots(environmentId, snapshots)
-}
-
-function sortProviders(
-  providers: Readonly<Record<string, MachineProviderSnapshot>>
-): MachineProviderSnapshot[] {
-  return Object.values(providers).sort((a, b) => a.name.localeCompare(b.name))
-}
-
-export function useMachineProviders(): MachineProviderSnapshot[] {
-  const providers = useMachinesStore((state) => state.providers)
-  return useMemo(() => sortProviders(providers), [providers])
-}
-
-function indexSshTunnels(
-  environments: readonly PublicKnownRuntimeEnvironment[]
-): Record<string, string> {
-  const index: Record<string, string> = {}
-  for (const environment of environments) {
-    const access = getRuntimeSshAccess(environment)
-    if (access) {
-      index[environment.id] = access.sshTargetId
+    if (result.ok) {
+      store.setMachineEnvironmentSnapshots(environmentId, result.value)
+    } else if (result.code === 'unsupported') {
+      // The server has machines turned off.
+      store.setMachineEnvironmentSnapshots(environmentId, [])
+    }
+  } catch (error) {
+    if (error instanceof RuntimeRpcCallError && error.code === 'method_not_found') {
+      store.setMachineEnvironmentSnapshots(environmentId, [])
     }
   }
-  return index
 }
 
-export function useMachineSources(): MachineSources {
-  const providers = useMachinesStore((state) => state.providers)
-  const environments = useMachinesStore((state) => state.environmentProviders)
-  const runtimeEnvironments = useAppStore((state) => state.runtimeEnvironments)
-  return useMemo(
-    () => ({
-      self: sortProviders(providers),
-      environments,
-      sshTargetIdByEnvironmentId: indexSshTunnels(runtimeEnvironments)
-    }),
-    [environments, providers, runtimeEnvironments]
+/** Paired servers that answer right now; an unreachable one keeps its last inventory. */
+function reachableEnvironmentIds(state: AppState): string[] {
+  return state.runtimeEnvironments
+    .filter((environment) => state.runtimeStatusByEnvironmentId.get(environment.id)?.status)
+    .map((environment) => environment.id)
+}
+
+function refreshAllMachines(): void {
+  refreshMachineProviders(VISIBLE_LIST_MAX_AGE_MS)
+  for (const environmentId of reachableEnvironmentIds(useAppStore.getState())) {
+    void loadEnvironmentMachines(environmentId)
+  }
+}
+
+export function hasMachineProviders(): boolean {
+  const state = useAppStore.getState()
+  return (
+    Object.keys(state.machineProviders).length > 0 ||
+    Object.values(state.machineEnvironmentProviders).some((snapshots) => snapshots.length > 0)
   )
 }
 
-export function getMachineSources(): MachineSources {
-  const state = useMachinesStore.getState()
-  return {
-    self: sortProviders(state.providers),
-    environments: state.environmentProviders,
-    sshTargetIdByEnvironmentId: indexSshTunnels(useAppStore.getState().runtimeEnvironments)
+/**
+ * Follows machine inventories while machines are enabled; mounted once near the app root. It
+ * re-lists each minute the window is visible, and nothing polls while the window is hidden.
+ */
+export function useMachineInventory(enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+    ensureMachinesLoaded()
+    return installWindowVisibilityInterval({
+      run: refreshAllMachines,
+      intervalMs: VISIBLE_LIST_MAX_AGE_MS
+    })
+  }, [enabled])
+}
+
+let sourcesCache: {
+  providers: AppState['machineProviders']
+  environments: AppState['machineEnvironmentProviders']
+  sources: MachineSources
+} | null = null
+
+// Why: many rows ask at once; one shared value keeps them from each re-sorting.
+function selectMachineSources(
+  providers: AppState['machineProviders'],
+  environments: AppState['machineEnvironmentProviders']
+): MachineSources {
+  if (
+    !sourcesCache ||
+    sourcesCache.providers !== providers ||
+    sourcesCache.environments !== environments
+  ) {
+    sourcesCache = {
+      providers,
+      environments,
+      sources: {
+        self: Object.values(providers).sort((a, b) => a.name.localeCompare(b.name)),
+        environments
+      }
+    }
   }
+  return sourcesCache.sources
+}
+
+export function useMachineSources(): MachineSources {
+  const providers = useAppStore((state) => state.machineProviders)
+  const environments = useAppStore((state) => state.machineEnvironmentProviders)
+  return selectMachineSources(providers, environments)
+}
+
+export function getMachineSources(): MachineSources {
+  const state = useAppStore.getState()
+  return selectMachineSources(state.machineProviders, state.machineEnvironmentProviders)
+}
+
+/** The machine a host runs on, or null for every other host. */
+export function useMachineForHost(hostKey: string | null | undefined): MachineMatch | null {
+  const sources = useMachineSources()
+  return useMemo(() => findMachineForHost(hostKey, sources), [hostKey, sources])
 }

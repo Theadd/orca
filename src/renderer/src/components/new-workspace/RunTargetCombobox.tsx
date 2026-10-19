@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import { Popover, PopoverContent } from '@/components/ui/popover'
-import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import {
   getProjectHostSetupSelectionKey,
@@ -10,12 +9,12 @@ import {
 } from '@/lib/project-host-setup-options'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { isWithinComboboxRoot, useTypeAheadCombobox } from './use-type-ahead-combobox'
-import { COMBOBOX_POPOVER_SURFACE } from './type-ahead-combobox-styles'
 import {
   buildRunTargetRows,
   getEphemeralVmLabel,
   getRecipeDetail,
   isSelectableRunTargetRow,
+  readyHostRowKey,
   RUN_TARGET_ADD_HOST_KEY,
   type EphemeralVmRecipeOption
 } from './run-target-options'
@@ -23,6 +22,7 @@ import { useRunTargetMachines, type RunTargetMachineProps } from './use-run-targ
 import type { MachineRowModel } from './run-target-machine-rows'
 import { MachineStateLabel } from '@/components/machines/MachineStateLabel'
 import { useNow } from '@/hooks/use-now'
+import { formatMachineSummary } from '@/lib/machines/machine-copy'
 import { AddHostSubmenuRow } from './RunTargetSubmenus'
 import RunTargetRowList from './RunTargetRowList'
 import RunTargetField from './RunTargetField'
@@ -76,23 +76,19 @@ export default function RunTargetCombobox({
 
   const hasAddHost = Boolean(onAddSshHost || onAddRemoteServer || onBrowseMachinePlugins)
   const machineRows = useRunTargetMachines(machines)
-  const { groups: machineGroups, views: machineViews } = machineRows
+  const {
+    groups: machineGroups,
+    views: machineViews,
+    selectedRowKey: selectedMachineRowKey,
+    activate: activateMachine
+  } = machineRows
+  const selectedMachine = machines?.selected ?? null
   const deriveRowKeys = useCallback(
     (query: string): string[] =>
       buildRunTargetRows({ hostOptions, recipes, machineGroups, machineViews, query, hasAddHost })
         .rows.filter(isSelectableRunTargetRow)
         .map((row) => row.key),
     [hasAddHost, hostOptions, machineGroups, machineViews, recipes]
-  )
-  const combobox = useTypeAheadCombobox(deriveRowKeys)
-  const { query, setQuery, open, setOpen, armedKey, arm, moveArm, inputRef, listId, setListNode } =
-    combobox
-  const now = useNow(60_000, open)
-
-  const { rows, matchedRecipes } = useMemo(
-    () =>
-      buildRunTargetRows({ hostOptions, recipes, machineGroups, machineViews, query, hasAddHost }),
-    [hasAddHost, hostOptions, machineGroups, machineViews, query, recipes]
   )
   const readyHostOptions = useMemo(
     () => hostOptions.filter((option) => option.kind === 'ready'),
@@ -107,9 +103,33 @@ export default function RunTargetCombobox({
     readyHostOptions[0] ??
     null
   const selectedRecipe = recipes.find((recipe) => recipe.id === recipeValue) ?? null
+  // Why: opening arms the current row, so the one filled row is the selection.
+  const currentRowKey =
+    selectedMachineRowKey ??
+    (selectedRecipe === null && selectedHost !== null ? readyHostRowKey(selectedHost) : null)
+  const combobox = useTypeAheadCombobox(deriveRowKeys, currentRowKey)
+  const {
+    query,
+    setQuery,
+    open,
+    setOpen,
+    close: closeCombobox,
+    armedKey,
+    arm,
+    moveArm,
+    inputRef,
+    listId,
+    setListNode
+  } = combobox
+  const now = useNow(60_000, open)
+
+  const { rows, matchedRecipes } = useMemo(
+    () =>
+      buildRunTargetRows({ hostOptions, recipes, machineGroups, machineViews, query, hasAddHost }),
+    [hasAddHost, hostOptions, machineGroups, machineViews, query, recipes]
+  )
   const armedRow =
     rows.find((row) => row.key === armedKey) ?? rows.find(isSelectableRunTargetRow) ?? null
-  const selectedMachine = machineRows.selected
   // Only a committed selection paints the field; typing replaces it.
   const committed =
     query.length === 0 &&
@@ -117,9 +137,9 @@ export default function RunTargetCombobox({
 
   // Closing also drops any open submenu, which the shared hook doesn't know about.
   const close = useCallback((): void => {
-    combobox.close()
+    closeCombobox()
     setSubmenu(null)
-  }, [combobox])
+  }, [closeCombobox])
 
   const selectHost = useCallback(
     (option: ReadyProjectHostSetupOption): void => {
@@ -182,16 +202,16 @@ export default function RunTargetCombobox({
       if (row.kind === 'machine') {
         onRecipeChange?.(null)
       }
-      machineRows.activate(row, close)
+      activateMachine(row, close)
     },
-    [close, machineRows, onRecipeChange]
+    [activateMachine, close, onRecipeChange]
   )
 
   /** Commits a row, or opens its submenu when the row is a submenu row. */
   const activate = useCallback(
     (key: string | null): void => {
       const row = rows.find((candidate) => candidate.key === key)
-      if (!row) {
+      if (!row || !isSelectableRunTargetRow(row)) {
         return
       }
       if (row.kind === 'ready') {
@@ -257,7 +277,7 @@ export default function RunTargetCombobox({
       ? `${getEphemeralVmLabel()} / ${selectedRecipe.name}`
       : (selectedHost?.label ?? '')
   const fieldDetail = selectedMachine
-    ? selectedMachine.group.name
+    ? formatMachineSummary(selectedMachine.group.name, selectedMachine.machine)
     : selectedRecipe
       ? getRecipeDetail(selectedRecipe)
       : (selectedHost?.path ?? '')
@@ -276,8 +296,11 @@ export default function RunTargetCombobox({
         onToggle={() => setOpen(!open)}
         committed={committed}
         kind={selectedMachine ? 'machine' : selectedRecipe ? 'recipe' : 'host'}
+        // Why: Running is the expected state, so only another state earns the dot and word.
         status={
-          selectedMachine ? <MachineStateLabel state={selectedMachine.machine.state} /> : null
+          selectedMachine && selectedMachine.machine.state !== 'running' ? (
+            <MachineStateLabel state={selectedMachine.machine.state} />
+          ) : null
         }
         hostId={selectedHost?.hostId ?? null}
         label={fieldLabel}
@@ -290,10 +313,8 @@ export default function RunTargetCombobox({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className={cn(
-          'flex w-[var(--radix-popover-trigger-width)] min-w-[18rem] flex-col p-0',
-          COMBOBOX_POPOVER_SURFACE
-        )}
+        surface="opaque"
+        className="flex w-[var(--radix-popover-trigger-width)] min-w-[18rem] flex-col"
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
         // The field lives in the anchor, not the content, so Radix would see a
@@ -353,7 +374,7 @@ export default function RunTargetCombobox({
               onSelectRecipe={selectRecipe}
               onConnectHost={(option) => void connectHost(option)}
               onSetLocation={setLocation}
-              selectedMachineRowKey={machineRows.selectedRowKey}
+              selectedMachineRowKey={selectedMachineRowKey}
               now={now}
               onActivateMachineRow={activateMachineRow}
             />

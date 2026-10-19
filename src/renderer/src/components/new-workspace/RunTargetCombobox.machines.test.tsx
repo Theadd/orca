@@ -42,8 +42,7 @@ const group: MachineGroupOption = {
   name: 'Omarchy',
   status: { kind: 'ready' },
   machines: ['omarchy-dev', 'pr-2231', 'perf-bench', 'gpu-box'].map((name) => machine(name)),
-  archived: [],
-  canCreate: false
+  archived: []
 }
 
 function renderPicker(
@@ -59,7 +58,7 @@ function renderPicker(
       onHostChange={onHostChange}
       recipes={[]}
       recipeValue={null}
-      machines={{ groups: [group], value: null, onChange, onProviderAction, ...machines }}
+      machines={{ groups: [group], selected: null, onChange, onProviderAction, ...machines }}
     />
   )
   return { onChange, onProviderAction, onHostChange, field: screen.getByRole('combobox') }
@@ -74,6 +73,35 @@ describe('run target machines', () => {
     expect(screen.getAllByRole('option').map((option) => option.textContent)).not.toContain(
       'Omarchy'
     )
+    const machines = screen.getByRole('group', { name: 'Omarchy' })
+    expect(machines.querySelectorAll('[role="option"]')).toHaveLength(4)
+  })
+
+  it('labels unconnected hosts beside a provider group', () => {
+    render(
+      <RunTargetCombobox
+        hostOptions={[
+          localOption,
+          {
+            id: 'ssh-setup',
+            kind: 'needs-setup',
+            projectId: 'project',
+            hostId: 'ssh:awin',
+            label: 'awin',
+            detail: 'Not connected',
+            isAvailable: false,
+            attention: false,
+            canSetLocation: false
+          }
+        ]}
+        hostValue="local-setup"
+        recipes={[]}
+        recipeValue={null}
+        machines={{ groups: [group], selected: null, onChange: vi.fn(), onProviderAction: vi.fn() }}
+      />
+    )
+    const hosts = screen.getByRole('group', { name: 'SSH hosts' })
+    expect(hosts.textContent).toContain('awin')
   })
 
   it('caps the group and expands it in place without closing', () => {
@@ -97,7 +125,7 @@ describe('run target machines', () => {
         recipes={[]}
         recipeValue={null}
         onRecipeChange={onRecipeChange}
-        machines={{ groups: [group], value: null, onChange, onProviderAction: vi.fn() }}
+        machines={{ groups: [group], selected: null, onChange, onProviderAction: vi.fn() }}
       />
     )
 
@@ -115,13 +143,25 @@ describe('run target machines', () => {
     expect(onChange).toHaveBeenCalledWith(group.machines[0])
   })
 
-  it('paints the committed machine in the field with its state', () => {
-    renderPicker({ value: { providerKey: PROVIDER, machineId: 'pr-2231' } })
-    const field = screen.getByRole('combobox', { name: 'Run on' })
-    const shown = field.parentElement?.parentElement?.textContent ?? ''
-    expect(shown).toContain('pr-2231')
-    expect(shown).toContain('Omarchy')
-    expect(shown).toContain('Running')
+  it('paints the committed machine in the field, naming its state only when not running', () => {
+    const shownFor = (picked: MachineOption): string => {
+      cleanup()
+      renderPicker({ selected: { group, machine: picked } })
+      const field = screen.getByRole('combobox', { name: 'Run on' })
+      return field.parentElement?.parentElement?.textContent ?? ''
+    }
+    const running = shownFor(group.machines[1])
+    expect(running).toContain('pr-2231')
+    expect(running).toContain('Omarchy')
+    expect(running).not.toContain('Running')
+    expect(shownFor(machine('pr-2231', 'sleeping'))).toContain('Sleeping')
+  })
+
+  it('fills only the armed row, which starts on the current choice', () => {
+    const { field } = renderPicker({ selected: { group, machine: group.machines[1] } })
+    fireEvent.focus(field)
+    const armed = screen.getAllByRole('option').filter((option) => option.dataset.armed)
+    expect(armed.map((option) => option.textContent)).toEqual([expect.stringContaining('pr-2231')])
   })
 
   it('turns a sign-in group into one row that asks the composer to sign in', () => {

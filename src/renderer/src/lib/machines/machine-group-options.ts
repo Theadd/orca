@@ -33,7 +33,6 @@ export type MachineGroupOption = {
   /** Live machines, bound to this project first, then most recent. */
   machines: readonly MachineOption[]
   archived: readonly MachineOption[]
-  canCreate: boolean
 }
 
 /** Local epoch ms of `expiresAt`, corrected for the provider's clock. */
@@ -86,13 +85,11 @@ function toOption(snapshot: MachineProviderSnapshot, machine: MachineRecord): Ma
  */
 export function buildMachineGroupOptions({
   snapshots,
-  boundMachineKeys,
-  allowCreate
+  boundMachineKeys
 }: {
   snapshots: readonly MachineProviderSnapshot[]
   /** `machineTargetKey`s of machines the selected project already has a location on. */
   boundMachineKeys: ReadonlySet<string>
-  allowCreate: boolean
 }): MachineGroupOption[] {
   return snapshots.map((snapshot) => {
     const usable = snapshot.machines.filter((machine) => machine.state !== 'gone')
@@ -114,8 +111,7 @@ export function buildMachineGroupOptions({
         .map((machine) => toOption(snapshot, machine)),
       archived: ordered
         .filter((machine) => machine.state === 'archived')
-        .map((machine) => toOption(snapshot, machine)),
-      canCreate: allowCreate && (snapshot.capabilities?.verbs.includes('create') ?? false)
+        .map((machine) => toOption(snapshot, machine))
     }
   })
 }

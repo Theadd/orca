@@ -17,8 +17,6 @@ export type MachineSources = {
   self: readonly MachineProviderSnapshot[]
   /** Inventories of paired servers, read over runtime RPC, keyed by environment id. */
   environments: Readonly<Record<string, readonly MachineProviderSnapshot[]>>
-  /** The SSH target this app reaches each managed server through, keyed by environment id. */
-  sshTargetIdByEnvironmentId: Readonly<Record<string, string>>
 }
 
 function findIn(
@@ -63,13 +61,12 @@ export function findMachineForHost(
     )
   }
   // Why: an SSH machine runs worktrees on the server Orca deployed there, which names the host.
-  const tunnelTargetId = sources.sshTargetIdByEnvironmentId[environmentId]
   return findIn(
     sources.self,
     null,
     (machine) =>
       machine.runtimeEnvironmentId === environmentId ||
-      (tunnelTargetId !== undefined && machine.sshTargetId === tunnelTargetId)
+      machine.managedEnvironmentId === environmentId
   )
 }
 

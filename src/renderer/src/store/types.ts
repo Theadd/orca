@@ -48,6 +48,7 @@ import type { RemoteServerUpdatesSlice } from './slices/remote-server-updates'
 import type { TerminalQuickCommandHostsSlice } from './slices/terminal-quick-command-hosts'
 import type { StructuredSessionLaunchDirectorySlice } from './slices/structured-session-launch-directories'
 import type { WorkspaceAttentionSlice } from './slices/workspace-attention/workspace-attention-contract'
+import type { MachinesSlice } from './slices/machines'
 
 export type AppState = RepoSlice &
   SparsePresetsSlice &
@@ -96,4 +97,5 @@ export type AppState = RepoSlice &
   RemoteServerUpdatesSlice &
   TerminalQuickCommandHostsSlice &
   StructuredSessionLaunchDirectorySlice &
-  WorkspaceAttentionSlice
+  WorkspaceAttentionSlice &
+  MachinesSlice

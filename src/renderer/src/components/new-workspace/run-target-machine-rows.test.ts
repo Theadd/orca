@@ -23,7 +23,6 @@ function group(overrides: Partial<MachineGroupOption> = {}): MachineGroupOption 
     status: { kind: 'ready' },
     machines: ['a', 'b', 'c', 'd', 'e'].map((name) => machine(name)),
     archived: [machine('old', { state: 'archived' })],
-    canCreate: true,
     ...overrides
   }
 }
@@ -33,15 +32,14 @@ function summarize(rows: ReturnType<typeof buildMachineRows>): string[] {
 }
 
 describe('buildMachineRows', () => {
-  it('caps a group at three machines, then Show all and the create row', () => {
+  it('caps a group at three machines, then Show all', () => {
     const rows = buildMachineRows({ groups: [group()], query: '', views: {} })
     expect(summarize(rows)).toEqual([
       'machine-group',
       'machine:a',
       'machine:b',
       'machine:c',
-      'machine-more',
-      'machine-create'
+      'machine-more'
     ])
   })
 
@@ -56,8 +54,7 @@ describe('buildMachineRows', () => {
       'machine:d',
       'machine:e',
       'machine-archived',
-      'machine-more',
-      'machine-create'
+      'machine-more'
     ])
   })
 
@@ -73,8 +70,7 @@ describe('buildMachineRows', () => {
       'machine:a',
       'machine-archived',
       'machine:old',
-      'machine-more',
-      'machine-create'
+      'machine-more'
     ])
   })
 
@@ -87,13 +83,13 @@ describe('buildMachineRows', () => {
     expect(summarize(rows)).toContain('machine-more')
   })
 
-  it('shows only the create row for a provider without machines', () => {
+  it('keeps the header of a provider without machines', () => {
     const rows = buildMachineRows({
       groups: [group({ machines: [], archived: [] })],
       query: '',
       views: {}
     })
-    expect(summarize(rows)).toEqual(['machine-group', 'machine-create'])
+    expect(summarize(rows)).toEqual(['machine-group'])
   })
 
   it('searches every machine, archived ones included, without a cap', () => {

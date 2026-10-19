@@ -2,14 +2,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   activateAndRevealFolderWorkspace: vi.fn(),
-  activateAndRevealWorktree: vi.fn()
+  activateAndRevealWorktree: vi.fn(),
+  wakeMachineForHost: vi.fn(),
+  hasMachineProviders: vi.fn(() => false)
 }))
+
+vi.mock('@/lib/machines/machine-wake-on-open', () => ({
+  wakeMachineForHost: mocks.wakeMachineForHost
+}))
+vi.mock('@/store/machines', () => ({ hasMachineProviders: mocks.hasMachineProviders }))
 
 vi.mock('@/lib/worktree-activation', () => ({
   activateAndRevealFolderWorkspace: mocks.activateAndRevealFolderWorkspace,
   activateAndRevealWorktree: mocks.activateAndRevealWorktree
 }))
 
+import { useAppStore } from '@/store'
+import type { FolderWorkspace } from '../../../shared/folder-workspace-types'
 import { activateWorktreeFromSidebar } from './sidebar-worktree-activation'
 
 describe('sidebar worktree activation', () => {
@@ -75,5 +84,30 @@ describe('sidebar worktree activation', () => {
       navigationIntent: 'user-open'
     })
     expect(mocks.activateAndRevealWorktree).not.toHaveBeenCalled()
+  })
+
+  it('wakes the machine behind a folder workspace from the folder’s own host', async () => {
+    mocks.hasMachineProviders.mockReturnValueOnce(true)
+    const folder: FolderWorkspace = {
+      id: 'folder-workspace-2',
+      projectGroupId: 'group-1',
+      name: 'Notes',
+      folderPath: '/home/dev/notes',
+      executionHostId: 'ssh:machine-a',
+      linkedTask: null,
+      comment: '',
+      isArchived: false,
+      isUnread: false,
+      isPinned: false,
+      sortOrder: 0,
+      lastActivityAt: 0,
+      createdAt: 0,
+      updatedAt: 0
+    }
+    useAppStore.setState({ folderWorkspaces: [folder], projectGroups: [] })
+
+    await activateWorktreeFromSidebar('folder:folder-workspace-2')
+
+    expect(mocks.wakeMachineForHost).toHaveBeenCalledWith('ssh:machine-a')
   })
 })

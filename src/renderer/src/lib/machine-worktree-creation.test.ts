@@ -19,6 +19,7 @@ type StoreFixture = {
   updatePendingWorktreeCreation: ReturnType<typeof vi.fn>
   setRuntimeEnvironments: ReturnType<typeof vi.fn>
   setupProjectClone: ReturnType<typeof vi.fn>
+  sshConnectionStates: Map<string, unknown>
 }
 
 const store: StoreFixture = {
@@ -29,7 +30,8 @@ const store: StoreFixture = {
   activePendingCreationId: 'creation-1',
   updatePendingWorktreeCreation: vi.fn(),
   setRuntimeEnvironments: vi.fn(),
-  setupProjectClone: vi.fn()
+  setupProjectClone: vi.fn(),
+  sshConnectionStates: new Map()
 }
 
 vi.mock('@/store', () => ({ useAppStore: { getState: () => store } }))
@@ -43,7 +45,8 @@ import { prepareMachineRequest } from './machine-worktree-creation'
 const machines = {
   get: vi.fn(),
   wake: vi.fn(),
-  connect: vi.fn()
+  connect: vi.fn(),
+  onProgress: vi.fn(() => () => {})
 }
 
 function record(overrides: Partial<MachineRecord> = {}): MachineRecord {
@@ -70,7 +73,8 @@ const MACHINE = {
   sourceRepoId: 'repo-local',
   projectId: 'project-1',
   providerKey: PROVIDER,
-  machineId: 'box-1'
+  machineId: 'box-1',
+  machineName: 'omarchy-dev'
 }
 
 const REQUEST = {
@@ -89,6 +93,7 @@ const REQUEST = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  store.sshConnectionStates = new Map()
   store.repos = []
   store.projectHostSetups = []
   store.pendingWorktreeCreations = {
@@ -128,13 +133,16 @@ describe('prepareMachineRequest', () => {
     expect(machines.wake.mock.invocationCallOrder[0]).toBeLessThan(
       machines.connect.mock.invocationCallOrder[0]
     )
-    expect(store.setupProjectClone).toHaveBeenCalledWith({
-      projectId: 'project-1',
-      hostId: 'runtime:env-1',
-      url: 'git@github.com:acme/web.git',
-      destination: '/home/dev/src',
-      displayName: 'acme-web'
-    })
+    expect(store.setupProjectClone).toHaveBeenCalledWith(
+      {
+        projectId: 'project-1',
+        hostId: 'runtime:env-1',
+        url: 'git@github.com:acme/web.git',
+        destination: '/home/dev/src',
+        displayName: 'acme-web'
+      },
+      { onError: expect.any(Function) }
+    )
     expect(prepared).toMatchObject({
       repoId: 'repo-machine',
       baseBranch: undefined,
@@ -173,8 +181,79 @@ describe('prepareMachineRequest', () => {
     expect(machines.connect).not.toHaveBeenCalled()
     expect(store.updatePendingWorktreeCreation).toHaveBeenLastCalledWith('creation-1', {
       status: 'error',
-      error: 'This machine is gone.'
+      error: 'omarchy-dev is gone.'
     })
+  })
+
+  it('shows a plain sentence and keeps the provider’s words for the log', async () => {
+    machines.get.mockResolvedValue({ ok: true, value: record({ state: 'sleeping' }) })
+    machines.wake.mockResolvedValue({
+      ok: false,
+      code: 'unavailable',
+      message: 'tunnel closed: System SSH port forward failed (exit 255)'
+    })
+
+    expect(await prepareMachineRequest('creation-1', REQUEST, MACHINE)).toBeNull()
+    expect(machines.wake).toHaveBeenCalledWith(
+      expect.objectContaining({ providerKey: PROVIDER, machineId: 'box-1' })
+    )
+    expect(store.updatePendingWorktreeCreation).toHaveBeenCalledWith('creation-1', {
+      provisioningLog: 'tunnel closed: System SSH port forward failed (exit 255)\n'
+    })
+    expect(store.updatePendingWorktreeCreation).toHaveBeenLastCalledWith('creation-1', {
+      status: 'error',
+      error: 'Couldn’t wake omarchy-dev. The provider ran into a problem.'
+    })
+  })
+
+  it('fails before cloning when the SSH machine has no Orca server', async () => {
+    machines.get.mockResolvedValue({ ok: true, value: record() })
+    machines.connect.mockResolvedValue({
+      ok: true,
+      value: { kind: 'ssh', sshTargetId: 'machine-abc' }
+    })
+    store.sshConnectionStates = new Map([
+      [
+        'machine-abc',
+        { managedServer: { kind: 'relay', reason: 'orcad_unavailable', detail: 'glibc too old' } }
+      ]
+    ])
+
+    expect(await prepareMachineRequest('creation-1', REQUEST, MACHINE)).toBeNull()
+    expect(store.setupProjectClone).not.toHaveBeenCalled()
+    expect(store.updatePendingWorktreeCreation).toHaveBeenCalledWith('creation-1', {
+      provisioningLog: 'glibc too old\n'
+    })
+    expect(store.updatePendingWorktreeCreation).toHaveBeenLastCalledWith('creation-1', {
+      status: 'error',
+      error: 'Orca couldn’t start its server on omarchy-dev, which it needs to set up the project.'
+    })
+  })
+
+  it('reports the clone’s own error in the log instead of a second toast', async () => {
+    machines.get.mockResolvedValue({ ok: true, value: record() })
+    store.setupProjectClone.mockImplementation(
+      async (_args: unknown, options: { onError: (message: string) => void }) => {
+        options.onError('Permission denied (publickey)')
+        return null
+      }
+    )
+
+    expect(await prepareMachineRequest('creation-1', REQUEST, MACHINE)).toBeNull()
+    expect(store.updatePendingWorktreeCreation).toHaveBeenCalledWith('creation-1', {
+      provisioningLog: 'Permission denied (publickey)\n'
+    })
+  })
+
+  it('stops before connecting when dismissed during the wake', async () => {
+    machines.get.mockResolvedValue({ ok: true, value: record({ state: 'sleeping' }) })
+    machines.wake.mockImplementation(async () => {
+      store.pendingWorktreeCreations = {}
+      return { ok: true, value: record() }
+    })
+
+    expect(await prepareMachineRequest('creation-1', REQUEST, MACHINE)).toBeNull()
+    expect(machines.connect).not.toHaveBeenCalled()
   })
 
   it('stops quietly when the pending create was dismissed mid-start', async () => {

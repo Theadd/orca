@@ -6,6 +6,7 @@ import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
 import { getWorktreeExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import { getFolderWorkspaceHostId } from '../../../shared/folder-workspace-execution-host'
 import { useAppStore } from '@/store'
 import { findWorktreeById } from '@/store/slices/worktree-helpers'
 import { wakeMachineForHost } from '@/lib/machines/machine-wake-on-open'
@@ -22,7 +23,9 @@ export async function activateWorktreeFromSidebar(
       ...(executionHostId ? { executionHostId } : {})
     })
     if (hasMachineProviders()) {
-      await wakeMachineForHost(executionHostId)
+      await wakeMachineForHost(
+        executionHostId ?? getFolderWorkspaceHostIdById(workspaceScope.folderWorkspaceId)
+      )
     }
     return
   }
@@ -40,6 +43,12 @@ export async function activateWorktreeFromSidebar(
       ? wakeMachineForHost(executionHostId ?? getWorktreeHostId(worktreeId))
       : undefined
   ])
+}
+
+function getFolderWorkspaceHostIdById(folderWorkspaceId: string): ExecutionHostId | null {
+  const state = useAppStore.getState()
+  const workspace = state.folderWorkspaces.find((candidate) => candidate.id === folderWorkspaceId)
+  return workspace ? getFolderWorkspaceHostId(workspace, state.projectGroups) : null
 }
 
 function getWorktreeHostId(worktreeId: string): ExecutionHostId | null {

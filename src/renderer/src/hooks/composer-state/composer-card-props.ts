@@ -149,7 +149,10 @@ export function buildComposerCardProps(state: ComposerModel) {
       isProjectGroupTarget || !ephemeralVmsEnabled ? null : ephemeralVmRecipeError,
     machineSelection: isProjectGroupTarget ? null : machineSelection,
     repoBackedSearchRepos: isProjectGroupTarget ? folderSourceRepos : undefined,
-    repoBackedSourcesDisabled: isProjectGroupTarget ? folderSourceRepos.length === 0 : false,
+    // Why: a sleeping machine's repo can't answer; submit wakes it, so search waits until then.
+    repoBackedSourcesDisabled: isProjectGroupTarget
+      ? folderSourceRepos.length === 0
+      : machineSelection?.selectedHostAsleep === true,
     allowSmartNameAddProject: !isProjectGroupTarget,
     smartNameRepoSwitchTarget: isProjectGroupTarget ? 'task-source' : 'project',
     name,

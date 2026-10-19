@@ -1,32 +1,33 @@
 import { toast } from 'sonner'
-import type { MachineRecord, MachineTarget } from '../../../shared/machine-inventory'
-import {
-  toRuntimeExecutionHostId,
-  toSshExecutionHostId,
-  type ExecutionHostId
-} from '../../../shared/execution-host'
+import type { ExecutionHostId } from '../../../shared/execution-host'
 import type { ProjectHostSetupResult } from '../../../shared/project-types'
 import { useAppStore } from '@/store'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
-import { machineNeedsWake } from '@/lib/machines/machine-display-state'
+import { appendProvisioningLog } from '@/lib/pending-creation-provisioning-log'
+import {
+  startMachine,
+  subscribeMachineProgress,
+  type MachineStep
+} from '@/lib/machines/machine-start'
+import { createBrowserUuid } from '@/lib/browser-uuid'
 import { resolveProjectCloneUrlPrefill } from '@/lib/project-clone-url-prefill'
 import { getPortableBaseSelection } from '@/lib/portable-base-selection'
 import { translate } from '@/i18n/i18n'
 
 type MachineRequest = NonNullable<WorktreeCreationRequest['machine']>
 
-type StartedMachine = { hostId: ExecutionHostId; projectRoot: string; environmentId?: string }
-
-type Step<T> = { ok: true; value: T } | { ok: false; error: string }
-
 function stillPending(creationId: string): boolean {
   return Boolean(useAppStore.getState().pendingWorktreeCreations[creationId])
 }
 
-function fail(creationId: string, error: string): null {
+/** Shows one plain sentence; the raw cause goes behind "Show log". */
+function fail(creationId: string, error: string, detail?: string): null {
   const store = useAppStore.getState()
   if (!store.pendingWorktreeCreations[creationId]) {
     return null
+  }
+  if (detail) {
+    appendProvisioningLog(creationId, `${detail.trimEnd()}\n`)
   }
   store.updatePendingWorktreeCreation(creationId, { status: 'error', error })
   if (store.activePendingCreationId !== creationId) {
@@ -35,78 +36,12 @@ function fail(creationId: string, error: string): null {
   return null
 }
 
-/**
- * Wakes a stopped machine, connects to it and reads where projects live. A sleeping or archived
- * machine is woken here, on submit, so choosing it in the composer never waits.
- */
-async function startMachine(target: MachineTarget): Promise<Step<StartedMachine>> {
-  const machines = window.api.machines
-  const current = await machines.get(target)
-  if (!current.ok) {
-    return { ok: false, error: current.message }
-  }
-  if (current.value.state === 'gone') {
-    return {
-      ok: false,
-      error: translate('auto.lib.machineWorktreeCreation.machineGone', 'This machine is gone.')
-    }
-  }
-  if (machineNeedsWake(current.value.state)) {
-    const woken = await machines.wake(target)
-    if (!woken.ok) {
-      return { ok: false, error: woken.message }
-    }
-  }
-  const connection = await machines.connect(target)
-  if (!connection.ok) {
-    return { ok: false, error: connection.message }
-  }
-  // Why: access is only reported while running, so read it after the wake settled.
-  const running = await machines.get(target)
-  const projectRoot = running.ok ? machineProjectRoot(running.value) : null
-  if (!projectRoot) {
-    return {
-      ok: false,
-      error: translate(
-        'auto.lib.machineWorktreeCreation.noProjectRoot',
-        'The provider did not say where projects live on this machine.'
-      )
-    }
-  }
-  const { value } = connection
-  if (value.kind === 'orca-server') {
-    return {
-      ok: true,
-      value: {
-        hostId: toRuntimeExecutionHostId(value.runtimeEnvironmentId),
-        projectRoot,
-        environmentId: value.runtimeEnvironmentId
-      }
-    }
-  }
-  // Why: worktrees live on the server Orca runs over SSH when it has one, as for any SSH host.
-  return {
-    ok: true,
-    value: value.environmentId
-      ? {
-          hostId: toRuntimeExecutionHostId(value.environmentId),
-          projectRoot,
-          environmentId: value.environmentId
-        }
-      : { hostId: toSshExecutionHostId(value.sshTargetId), projectRoot }
-  }
-}
-
-function machineProjectRoot(machine: MachineRecord): string | null {
-  return machine.access?.projectRoot ?? null
-}
-
 /** Reuses the project's location on the machine, or clones it into the provider's project root. */
 async function ensureProjectOnMachine(args: {
   projectId: string
   hostId: ExecutionHostId
   projectRoot: string
-}): Promise<Step<ProjectHostSetupResult>> {
+}): Promise<MachineStep<ProjectHostSetupResult>> {
   const store = useAppStore.getState()
   const existing = store.projectHostSetups.find(
     (setup) =>
@@ -131,13 +66,17 @@ async function ensureProjectOnMachine(args: {
       )
     }
   }
-  const cloned = await store.setupProjectClone({
-    projectId: args.projectId,
-    hostId: args.hostId,
-    url,
-    destination: args.projectRoot,
-    ...(project ? { displayName: project.displayName } : {})
-  })
+  const failure: { cause?: string } = {}
+  const cloned = await store.setupProjectClone(
+    {
+      projectId: args.projectId,
+      hostId: args.hostId,
+      url,
+      destination: args.projectRoot,
+      ...(project ? { displayName: project.displayName } : {})
+    },
+    { onError: (message) => (failure.cause = message) }
+  )
   return cloned
     ? { ok: true, value: cloned }
     : {
@@ -145,7 +84,8 @@ async function ensureProjectOnMachine(args: {
         error: translate(
           'auto.lib.machineWorktreeCreation.cloneFailed',
           'Couldn’t set up the project on the machine.'
-        )
+        ),
+        ...(failure.cause ? { detail: failure.cause } : {})
       }
 }
 
@@ -155,34 +95,50 @@ export async function prepareMachineRequest(
   request: WorktreeCreationRequest,
   machine: MachineRequest
 ): Promise<WorktreeCreationRequest | null> {
-  useAppStore
-    .getState()
-    .updatePendingWorktreeCreation(creationId, { phase: 'starting-machine', provisioningLog: '' })
-  const started = await startMachine({
-    providerKey: machine.providerKey,
-    machineId: machine.machineId
+  useAppStore.getState().updatePendingWorktreeCreation(creationId, {
+    phase: 'starting-machine',
+    provisioningLog: '',
+    machineProgress: { activity: 'connecting' }
   })
-  if (!started.ok) {
-    return fail(creationId, started.error)
-  }
-  if (started.value.environmentId) {
-    try {
-      // Why: the first connect may have just deployed this server; host badges and setup read it.
-      useAppStore.getState().setRuntimeEnvironments(await window.api.runtimeEnvironments.list())
-    } catch {
-      // A stale catalog only delays host badges; setup re-reads the route.
+  const operationId = createBrowserUuid()
+  const unsubscribe = subscribeMachineProgress(operationId, (chunk) =>
+    appendProvisioningLog(creationId, chunk)
+  )
+  const started = await startMachine(
+    { providerKey: machine.providerKey, machineId: machine.machineId },
+    {
+      name: machine.machineName,
+      operationId,
+      isCanceled: () => !stillPending(creationId),
+      onActivity: (activity) =>
+        useAppStore
+          .getState()
+          .updatePendingWorktreeCreation(creationId, { machineProgress: { activity } })
     }
+  ).finally(unsubscribe)
+  if (!started) {
+    return null
+  }
+  if (!started.ok) {
+    return fail(creationId, started.error, started.detail)
+  }
+  try {
+    // Why: the first connect may have just deployed this server; host badges and setup read it.
+    useAppStore.getState().setRuntimeEnvironments(await window.api.runtimeEnvironments.list())
+  } catch {
+    // A stale catalog only delays host badges; setup re-reads the route.
   }
   if (!stillPending(creationId)) {
     return null
   }
+  useAppStore.getState().updatePendingWorktreeCreation(creationId, { phase: 'setting-up-project' })
   const setup = await ensureProjectOnMachine({
     projectId: machine.projectId,
     hostId: started.value.hostId,
     projectRoot: started.value.projectRoot
   })
   if (!setup.ok) {
-    return fail(creationId, setup.error)
+    return fail(creationId, setup.error, setup.detail)
   }
   if (!stillPending(creationId)) {
     return null

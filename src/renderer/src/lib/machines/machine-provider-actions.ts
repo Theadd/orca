@@ -3,7 +3,6 @@ import { buildShellCommandFromArgv } from '../../../../shared/tui-agent-startup-
 import { resolveLocalWindowsAgentStartupShell } from '../../../../shared/windows-terminal-shell'
 import { getWorktreeExecutionHostId, isLocalExecutionHost } from '../../../../shared/execution-host'
 import { useAppStore } from '@/store'
-import { useMachinesStore } from '@/store/machines'
 import { findWorktreeById } from '@/store/slices/worktree-helpers'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 
@@ -45,7 +44,7 @@ function localActiveWorktreeId(): string | null {
  * local worktree. With nowhere local to run it, opens the provider's settings instead.
  */
 export function signInToMachineProvider(providerKey: MachineProviderKey): void {
-  const argv = useMachinesStore.getState().providers[providerKey]?.capabilities?.signInCommand
+  const argv = useAppStore.getState().machineProviders[providerKey]?.capabilities?.signInCommand
   const worktreeId = localActiveWorktreeId()
   if (!argv || !worktreeId) {
     openMachineProviderSettings()

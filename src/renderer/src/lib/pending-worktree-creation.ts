@@ -29,6 +29,7 @@ export type WorktreeCreationPhase =
   | 'preparing'
   | 'provisioning-vm'
   | 'starting-machine'
+  | 'setting-up-project'
   | 'fetching'
   | 'creating'
 
@@ -74,6 +75,8 @@ export type WorktreeCreationRequest = {
     projectId: string
     providerKey: MachineProviderKey
     machineId: string
+    /** Shown while the machine starts, before any host row knows it. */
+    machineName: string
   }
   /** Captured from the repo/run owner at submit time so Retry keeps the same
    *  local-vs-runtime progress behavior even if the focused runtime changes. */
@@ -165,6 +168,8 @@ export type PendingWorktreeCreation = {
   loaderVisible: boolean
   error?: string
   provisioningLog?: string
+  /** Machine-backed creates only: what starting the machine is doing now. */
+  machineProgress?: { activity: 'waking' | 'connecting' }
   /** Git's checkout meter during a local `git worktree add`; absent when git
    *  printed none (fast or sparse checkouts, SSH and runtime creates). */
   checkoutProgress?: WorktreeCheckoutProgress
@@ -226,6 +231,9 @@ export function getCreationProgressLabel(
   }
   if (entry.phase === 'starting-machine') {
     return translate('auto.lib.pendingWorktreeCreation.startingMachine', 'Starting machine…')
+  }
+  if (entry.phase === 'setting-up-project') {
+    return translate('auto.lib.pendingWorktreeCreation.settingUpRepo', 'Setting up repo…')
   }
   if (entry.indeterminate) {
     return translate(

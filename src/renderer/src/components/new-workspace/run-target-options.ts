@@ -6,9 +6,9 @@ import {
   type ReadyProjectHostSetupOption
 } from '@/lib/project-host-setup-options'
 import { translate } from '@/i18n/i18n'
+import type { MachineGroupOption } from '@/lib/machines/machine-group-options'
 import {
   buildMachineRows,
-  type MachineGroupOption,
   type MachineGroupView,
   type MachineRowModel
 } from './run-target-machine-rows'
@@ -17,18 +17,75 @@ export type EphemeralVmRecipeOption = NonNullable<OrcaHooks['environmentRecipes'
 
 export const RUN_TARGET_ADD_HOST_KEY = 'add-host'
 export const RUN_TARGET_RECIPES_KEY = 'per-workspace-env'
+const RUN_TARGET_HOST_GROUP_KEY = 'host-group'
 
-/** A row in the run-target list. Hosts commit; the last two open a submenu. */
+type HostGroupHeaderRow = { key: typeof RUN_TARGET_HOST_GROUP_KEY; kind: 'host-group' }
+
+/** A row in the run-target list. Hosts commit; recipes and Add host open a submenu. */
 export type RunTargetRowModel =
   | { key: string; kind: 'ready'; option: ReadyProjectHostSetupOption }
   | { key: string; kind: 'needs-setup'; option: NeedsSetupProjectHostOption }
   | { key: typeof RUN_TARGET_RECIPES_KEY; kind: 'recipes' }
   | { key: typeof RUN_TARGET_ADD_HOST_KEY; kind: 'add-host' }
+  | HostGroupHeaderRow
   | MachineRowModel
 
+export type RunTargetHeaderRow = Extract<
+  RunTargetRowModel,
+  { kind: 'host-group' | 'machine-group' }
+>
+export type SelectableRunTargetRow = Exclude<RunTargetRowModel, RunTargetHeaderRow>
+
 /** Group headers label rows but can't be armed or committed. */
-export function isSelectableRunTargetRow(row: RunTargetRowModel): boolean {
-  return row.kind !== 'machine-group'
+export function isSelectableRunTargetRow(row: RunTargetRowModel): row is SelectableRunTargetRow {
+  return row.kind !== 'machine-group' && row.kind !== 'host-group'
+}
+
+/** Rows under one header, or a run of rows no header labels. */
+export type RunTargetRowSection = {
+  key: string
+  header: RunTargetHeaderRow | null
+  rows: SelectableRunTargetRow[]
+}
+
+function sectionOf(row: SelectableRunTargetRow): 'machines' | 'hosts' | null {
+  switch (row.kind) {
+    case 'needs-setup':
+      return 'hosts'
+    case 'ready':
+    case 'recipes':
+    case 'add-host':
+      return null
+    case 'machine':
+    case 'machine-more':
+    case 'machine-archived':
+    case 'machine-sign-in':
+    case 'machine-retry':
+    case 'machine-details':
+      return 'machines'
+  }
+}
+
+/** Splits the flat row list into the sections the list renders, one per header. */
+export function sectionRunTargetRows(rows: readonly RunTargetRowModel[]): RunTargetRowSection[] {
+  const sections: RunTargetRowSection[] = []
+  let current: RunTargetRowSection | null = null
+  for (const row of rows) {
+    if (!isSelectableRunTargetRow(row)) {
+      current = { key: row.key, header: row, rows: [] }
+      sections.push(current)
+      continue
+    }
+    const header = current?.header ?? null
+    const belongs =
+      header !== null && sectionOf(row) === (header.kind === 'host-group' ? 'hosts' : 'machines')
+    if (!current || (header !== null && !belongs)) {
+      current = { key: `rows:${row.key}`, header: null, rows: [] }
+      sections.push(current)
+    }
+    current.rows.push(row)
+  }
+  return sections
 }
 
 export function getEphemeralVmLabel(): string {
@@ -62,6 +119,10 @@ export function getRecipeDetail(recipe: EphemeralVmRecipeOption): string {
   return `${getRecipeCommandDisplay(recipe.create)} · ${getRecipeDestroyLabel(recipe)}`
 }
 
+export function readyHostRowKey(option: ReadyProjectHostSetupOption): string {
+  return `host:${getProjectHostSetupSelectionKey(option)}`
+}
+
 function matches(haystack: string, query: string): boolean {
   return haystack.toLowerCase().includes(query)
 }
@@ -87,7 +148,7 @@ function buildHostRows(
   )
   return {
     ready: ready.map((option) => ({
-      key: `host:${getProjectHostSetupSelectionKey(option)}`,
+      key: readyHostRowKey(option),
       kind: 'ready' as const,
       option
     })),
@@ -147,10 +208,21 @@ export function buildRunTargetRows({
   const trimmed = query.trim().toLowerCase()
   const matchedRecipes = matchRecipes(recipes, trimmed)
   const hosts = buildHostRows(hostOptions, trimmed)
+  const machineRows = buildMachineRows({
+    groups: machineGroups,
+    query: trimmed,
+    views: machineViews
+  })
+  // Why: beside provider groups, unconnected hosts need their own label or they read as machines.
+  const hostHeader: RunTargetRowModel[] =
+    machineRows.length > 0 && hosts.needsSetup.length > 0
+      ? [{ key: RUN_TARGET_HOST_GROUP_KEY, kind: 'host-group' }]
+      : []
   // Why: machines can run now, so they sit above hosts that still need a connection.
   const rows: RunTargetRowModel[] = [
     ...hosts.ready,
-    ...buildMachineRows({ groups: machineGroups, query: trimmed, views: machineViews }),
+    ...machineRows,
+    ...hostHeader,
     ...hosts.needsSetup,
     ...buildSubmenuRows(matchedRecipes.length > 0, hasAddHost)
   ]

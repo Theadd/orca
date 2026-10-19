@@ -41,7 +41,7 @@ export function ConnectHostButton({
       // Why: only the row being connected is disabled, so one slow connect
       // can't lock out connecting to the others.
       disabled={connecting}
-      className="ml-1 shrink-0 gap-1 self-center text-muted-foreground/70 hover:text-foreground"
+      className="ml-1 self-center"
       onMouseDown={(event) => {
         event.preventDefault()
         event.stopPropagation()

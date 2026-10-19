@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Loader2, Server, ServerOff } from 'lucide-react'
+import { Box, Loader2, Server, ServerOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { sshTargetConnectFailureText } from '@/ssh/ssh-host-server-status-copy'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,8 @@ type WorktreeCardSshHostControlProps = {
   sshOwnerEnvironmentId: string | null
   /** True when the row cannot afford a visible label: icon-only with an sr-only label. */
   iconOnly: boolean
+  /** The host is a provider's machine, so its connected glyph is the machine's. */
+  onMachine?: boolean
   onPointerDown: React.PointerEventHandler<HTMLButtonElement>
 }
 
@@ -77,6 +79,7 @@ export function WorktreeCardSshHostControl({
   targetRemoved,
   sshOwnerEnvironmentId,
   iconOnly,
+  onMachine = false,
   onPointerDown
 }: WorktreeCardSshHostControlProps): React.JSX.Element | null {
   const setSshConnectionState = useAppStore((store) => store.setSshConnectionState)
@@ -144,7 +147,13 @@ export function WorktreeCardSshHostControl({
     return (
       <PassiveGlyph
         targetLabel={targetLabel}
-        icon={<Server className="size-3 text-muted-foreground" />}
+        icon={
+          onMachine ? (
+            <Box className="size-3 text-muted-foreground" />
+          ) : (
+            <Server className="size-3 text-muted-foreground" />
+          )
+        }
         tooltip={translate(
           'auto.components.sidebar.WorktreeCardSshHostControl.connectedTooltip',
           'Project on SSH host'

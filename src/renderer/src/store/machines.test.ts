@@ -1,26 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { MachineProviderSnapshot } from '../../../shared/machine-inventory'
 
 const mocks = vi.hoisted(() => ({ callRuntimeRpc: vi.fn() }))
 
 vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc: mocks.callRuntimeRpc }))
-vi.mock('@/store', () => ({ useAppStore: { getState: () => ({ runtimeEnvironments: [] }) } }))
+vi.mock('@/store', async () => {
+  const { createTestStore } = await import('./slices/store-test-helpers')
+  return { useAppStore: createTestStore() }
+})
 
-import { loadEnvironmentMachines, useMachinesStore } from './machines'
+import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
+import { useAppStore } from '@/store'
+import { ensureMachinesLoaded, loadEnvironmentMachines } from './machines'
+
+function snapshot(listedAt: number): MachineProviderSnapshot {
+  return {
+    providerKey: 'plugin:p/omarchy',
+    name: 'Omarchy',
+    machines: [],
+    pendingCreates: [],
+    listedAt
+  }
+}
+
+function rpcError(code: string): RuntimeRpcCallError {
+  return new RuntimeRpcCallError({ id: '1', ok: false, error: { code, message: code } })
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
-  useMachinesStore.setState({ providers: {}, environmentProviders: {} })
+  useAppStore.setState({ machineProviders: {}, machineEnvironmentProviders: {} })
 })
 
 describe('loadEnvironmentMachines', () => {
   it('stores a paired server’s inventory', async () => {
-    const snapshot = {
-      providerKey: 'plugin:p/omarchy',
-      name: 'Omarchy',
-      machines: [],
-      pendingCreates: []
-    }
-    mocks.callRuntimeRpc.mockResolvedValue({ ok: true, value: [snapshot] })
+    mocks.callRuntimeRpc.mockResolvedValue({ ok: true, value: [snapshot(1)] })
 
     await loadEnvironmentMachines('env-1')
 
@@ -30,14 +44,55 @@ describe('loadEnvironmentMachines', () => {
       {},
       { suppressFeatureInteraction: true }
     )
-    expect(useMachinesStore.getState().environmentProviders['env-1']).toEqual([snapshot])
+    expect(useAppStore.getState().machineEnvironmentProviders['env-1']).toEqual([snapshot(1)])
   })
 
   it('reads an older server without machine methods as having none', async () => {
-    mocks.callRuntimeRpc.mockRejectedValue(new Error('method_not_found: machines.list'))
+    mocks.callRuntimeRpc.mockRejectedValue(rpcError('method_not_found'))
 
     await loadEnvironmentMachines('env-old')
 
-    expect(useMachinesStore.getState().environmentProviders['env-old']).toEqual([])
+    expect(useAppStore.getState().machineEnvironmentProviders['env-old']).toEqual([])
+  })
+
+  it('keeps the last inventory when the server cannot be reached', async () => {
+    useAppStore.getState().setMachineEnvironmentSnapshots('env-1', [snapshot(1)])
+    mocks.callRuntimeRpc.mockRejectedValueOnce(rpcError('timeout'))
+    await loadEnvironmentMachines('env-1')
+    mocks.callRuntimeRpc.mockResolvedValueOnce({ ok: false, code: 'failed', message: 'boom' })
+    await loadEnvironmentMachines('env-1')
+
+    expect(useAppStore.getState().machineEnvironmentProviders['env-1']).toEqual([snapshot(1)])
+  })
+})
+
+describe('ensureMachinesLoaded', () => {
+  it('keeps a newer push over a late load, and retries a failed load', async () => {
+    let pushChange: (next: MachineProviderSnapshot) => void = () => {}
+    const snapshots = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ipc'))
+      .mockResolvedValueOnce({ ok: true, value: [snapshot(1)] })
+    vi.stubGlobal('window', {
+      api: {
+        machines: {
+          snapshots,
+          onChanged: (callback: (next: MachineProviderSnapshot) => void) => {
+            pushChange = callback
+          }
+        }
+      }
+    })
+
+    ensureMachinesLoaded()
+    await vi.waitFor(() => expect(snapshots).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+    ensureMachinesLoaded()
+    pushChange(snapshot(2))
+    await vi.waitFor(() => expect(snapshots).toHaveBeenCalledTimes(2))
+    await Promise.resolve()
+
+    expect(useAppStore.getState().machineProviders['plugin:p/omarchy']?.listedAt).toBe(2)
+    vi.unstubAllGlobals()
   })
 })

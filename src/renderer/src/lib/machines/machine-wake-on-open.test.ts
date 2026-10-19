@@ -6,12 +6,20 @@ const PROVIDER = 'plugin:omarchy/omarchy' as const
 
 const mocks = vi.hoisted(() => {
   const state: { sources: MachineSources | null } = { sources: null }
-  return { state, callRuntimeRpc: vi.fn(), toastError: vi.fn() }
+  return {
+    state,
+    callRuntimeRpc: vi.fn(),
+    toastError: vi.fn(),
+    toastLoading: vi.fn(() => 'toast-1'),
+    toastDismiss: vi.fn()
+  }
 })
 
 vi.mock('@/store/machines', () => ({ getMachineSources: () => mocks.state.sources }))
 vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc: mocks.callRuntimeRpc }))
-vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }))
+vi.mock('sonner', () => ({
+  toast: { error: mocks.toastError, loading: mocks.toastLoading, dismiss: mocks.toastDismiss }
+}))
 
 import { wakeMachineForHost } from './machine-wake-on-open'
 
@@ -47,20 +55,21 @@ beforeEach(() => {
 
 describe('wakeMachineForHost', () => {
   it('wakes and reconnects a sleeping machine, joining repeat opens', async () => {
-    mocks.state.sources = { self: [snapshot({})], environments: {}, sshTargetIdByEnvironmentId: {} }
+    mocks.state.sources = { self: [snapshot({})], environments: {} }
 
     await Promise.all([wakeMachineForHost('ssh:machine-a'), wakeMachineForHost('ssh:machine-a')])
 
     expect(machines.wake).toHaveBeenCalledTimes(1)
     expect(machines.wake).toHaveBeenCalledWith({ providerKey: PROVIDER, machineId: 'box-1' })
     expect(machines.connect).toHaveBeenCalledTimes(1)
+    expect(mocks.toastLoading).toHaveBeenCalledWith('Waking omarchy-dev…')
+    expect(mocks.toastDismiss).toHaveBeenCalledWith('toast-1')
   })
 
   it('leaves running machines and plain hosts alone', async () => {
     mocks.state.sources = {
       self: [snapshot({ state: 'running' })],
-      environments: {},
-      sshTargetIdByEnvironmentId: {}
+      environments: {}
     }
 
     await wakeMachineForHost('ssh:machine-a')
@@ -72,8 +81,7 @@ describe('wakeMachineForHost', () => {
   it('asks a paired server to wake a machine its provider owns', async () => {
     mocks.state.sources = {
       self: [],
-      environments: { 'env-2': [snapshot({})] },
-      sshTargetIdByEnvironmentId: {}
+      environments: { 'env-2': [snapshot({})] }
     }
     mocks.callRuntimeRpc.mockResolvedValue({ ok: true, value: {} })
 
@@ -88,14 +96,27 @@ describe('wakeMachineForHost', () => {
   })
 
   it('reports a failed wake without throwing into navigation', async () => {
-    mocks.state.sources = { self: [snapshot({})], environments: {}, sshTargetIdByEnvironmentId: {} }
+    mocks.state.sources = { self: [snapshot({})], environments: {} }
     machines.wake.mockResolvedValue({ ok: false, code: 'unavailable', message: 'host is down' })
 
     await wakeMachineForHost('ssh:machine-a')
 
     expect(mocks.toastError).toHaveBeenCalledWith('Couldn’t wake omarchy-dev', {
-      description: 'host is down'
+      id: 'toast-1',
+      description: 'The provider ran into a problem.'
     })
     expect(machines.connect).not.toHaveBeenCalled()
+  })
+
+  it('reports a wake whose reconnect fails', async () => {
+    mocks.state.sources = { self: [snapshot({})], environments: {} }
+    machines.connect.mockResolvedValue({ ok: false, code: 'timeout', message: 'ssh exit 255' })
+
+    await wakeMachineForHost('ssh:machine-a')
+
+    expect(mocks.toastError).toHaveBeenCalledWith('Couldn’t wake omarchy-dev', {
+      id: 'toast-1',
+      description: 'The provider didn’t answer in time.'
+    })
   })
 })
