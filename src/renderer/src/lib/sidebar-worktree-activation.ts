@@ -5,7 +5,11 @@ import {
 import { parseWorkspaceKey } from '../../../shared/workspace-scope'
 import { toast } from 'sonner'
 import { translate } from '@/i18n/i18n'
-import type { ExecutionHostId } from '../../../shared/execution-host'
+import { getWorktreeExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
+import { useAppStore } from '@/store'
+import { findWorktreeById } from '@/store/slices/worktree-helpers'
+import { wakeMachineForHost } from '@/lib/machines/machine-wake-on-open'
+import { hasMachineProviders } from '@/store/machines'
 
 export async function activateWorktreeFromSidebar(
   worktreeId: string,
@@ -17,6 +21,9 @@ export async function activateWorktreeFromSidebar(
       navigationIntent: 'user-open',
       ...(executionHostId ? { executionHostId } : {})
     })
+    if (hasMachineProviders()) {
+      await wakeMachineForHost(executionHostId)
+    }
     return
   }
   // Keep navigation independent from an optional runtime wake IPC.
@@ -26,7 +33,23 @@ export async function activateWorktreeFromSidebar(
     ...(executionHostId ? { executionHostId } : {})
   })
 
-  await resumeEphemeralVmWorkspace(worktreeId)
+  await Promise.all([
+    resumeEphemeralVmWorkspace(worktreeId),
+    // Why: skip the host lookup entirely for the common case of no machine providers.
+    hasMachineProviders()
+      ? wakeMachineForHost(executionHostId ?? getWorktreeHostId(worktreeId))
+      : undefined
+  ])
+}
+
+function getWorktreeHostId(worktreeId: string): ExecutionHostId | null {
+  const state = useAppStore.getState()
+  const worktree = findWorktreeById(state.worktreesByRepo, worktreeId)
+  if (!worktree) {
+    return null
+  }
+  const repo = state.repos.find((candidate) => candidate.id === worktree.repoId)
+  return getWorktreeExecutionHostId(worktree, repo)
 }
 
 /** Wakes the per-workspace VM behind a worktree, if it has one. */

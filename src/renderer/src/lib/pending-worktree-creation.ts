@@ -18,13 +18,19 @@ import type { AgentStartedTelemetry } from '@/lib/worktree-startup-payload'
 import type { TaskSourceContext, WorkspaceRunContext } from '../../../shared/task-source-context'
 import type { AgentLaunchRoute } from '@/lib/agent-launch-routing'
 import { translate } from '@/i18n/i18n'
+import type { MachineProviderKey } from '../../../shared/machine-inventory'
 
 /** Two-phase status reported by the main process while a worktree is created.
  *  `preparing` covers renderer-side preflight before `createWorktree` starts;
  *  `fetching` covers the base-ref git fetch; `creating` covers `git worktree
  *  add`. Remote/runtime creates may skip git phases; VM recipes add a
  *  provider-provisioning phase before the runtime worktree exists. */
-export type WorktreeCreationPhase = 'preparing' | 'provisioning-vm' | 'fetching' | 'creating'
+export type WorktreeCreationPhase =
+  | 'preparing'
+  | 'provisioning-vm'
+  | 'starting-machine'
+  | 'fetching'
+  | 'creating'
 
 export type WorktreeCreationProgressMode = 'stepped' | 'indeterminate'
 
@@ -60,6 +66,14 @@ export type WorktreeCreationRequest = {
     recipeId: string
     projectId: string
     checkoutMode?: 'orca-worktree' | 'provisioned-root'
+  }
+  /** Machine to wake (when stopped), connect and set the project up on before the worktree is
+   *  created. Serializable so Retry reruns the same steps. */
+  machine?: {
+    sourceRepoId: string
+    projectId: string
+    providerKey: MachineProviderKey
+    machineId: string
   }
   /** Captured from the repo/run owner at submit time so Retry keeps the same
    *  local-vs-runtime progress behavior even if the focused runtime changes. */
@@ -209,6 +223,9 @@ export function getCreationProgressLabel(
   }
   if (entry.phase === 'provisioning-vm') {
     return translate('auto.lib.pendingWorktreeCreation.provisioningVm', 'Provisioning VM…')
+  }
+  if (entry.phase === 'starting-machine') {
+    return translate('auto.lib.pendingWorktreeCreation.startingMachine', 'Starting machine…')
   }
   if (entry.indeterminate) {
     return translate(
