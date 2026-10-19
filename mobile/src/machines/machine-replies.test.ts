@@ -51,4 +51,22 @@ describe('readMachineAction', () => {
       readMachineAction(ok({ ok: false, code: 'auth-required', message: 'Sign in' }), 'sleep')
     ).toEqual({ kind: 'failed', message: 'Sign in' })
   })
+
+  it('reads a transport failure as unverified and drops only unreadable rows', () => {
+    expect(readMachineAction(refused('timeout', 'Request timed out'), 'wake')).toEqual({
+      kind: 'unverified'
+    })
+    const partial = {
+      ...provider,
+      machines: [
+        ...provider.machines,
+        { id: 42 },
+        { ...provider.machines[0], id: 'sbx-2', lastSeenAt: 'x' }
+      ]
+    }
+    const read = readMachinesList(ok({ ok: true, value: [partial] }))
+    expect(read.kind === 'providers' ? read.providers[0]?.machines.map((m) => m.id) : null).toEqual(
+      ['sbx-1', 'sbx-2']
+    )
+  })
 })

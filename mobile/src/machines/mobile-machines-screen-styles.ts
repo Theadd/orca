@@ -10,6 +10,9 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: spacing.sm
   },
+  rowStale: {
+    opacity: 0.6
+  },
   stateRow: {
     flexDirection: 'row',
     alignItems: 'center',

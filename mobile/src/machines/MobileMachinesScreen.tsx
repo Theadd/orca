@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useLocalSearchParams } from 'expo-router'
-import { ChevronLeft, RefreshCw, Server } from 'lucide-react-native'
+import { Box, ChevronLeft, RefreshCw } from 'lucide-react-native'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { useNow } from '../hooks/use-now'
 import { useRouteHandoff } from '../navigation/route-handoff'
@@ -13,6 +13,11 @@ import type { MobileMachine, MobileMachineProvider } from './machine-operations'
 import { machineRowModel } from './machine-row-model'
 import { styles } from './mobile-machines-screen-styles'
 import { useHostMachines } from './use-host-machines'
+
+function staleAge(fetchedAt: number, now: number): string {
+  const minutes = Math.max(0, Math.round((now - fetchedAt) / 60_000))
+  return minutes < 1 ? 'just now' : `${minutes} min ago`
+}
 
 /**
  * The paired desktop's machines: read-only, with Wake and Sleep. Create, archive and delete stay
@@ -33,6 +38,10 @@ export function MobileMachinesScreen() {
   )
   const now = useNow(60_000, focused)
   const machines = useHostMachines({ client, connState, focused })
+  const [sleepTarget, setSleepTarget] = useState<{
+    provider: MobileMachineProvider
+    machine: MobileMachine
+  } | null>(null)
 
   useEffect(() => {
     let stale = false
@@ -46,12 +55,22 @@ export function MobileMachinesScreen() {
     }
   }, [hostId])
 
-  const renderMachine = (provider: MobileMachineProvider, machine: MobileMachine) => {
+  const renderMachine = (
+    provider: MobileMachineProvider,
+    machine: MobileMachine,
+    stale: boolean
+  ) => {
     const model = machineRowModel(machine, provider.clockOffsetMs, now)
     const action = model.action
-    const busy = machines.busyMachineId === machine.id
+    const busy = machines.busy?.machineId === machine.id ? machines.busy.verb : null
+    const run = () =>
+      action === 'sleep'
+        ? setSleepTarget({ provider, machine })
+        : action
+          ? void machines.act(provider.providerKey, machine.id, action)
+          : undefined
     return (
-      <View key={machine.id} style={styles.row}>
+      <View key={machine.id} style={[styles.row, stale && styles.rowStale]}>
         <View style={styles.rowMain}>
           <Text style={styles.rowTitle} numberOfLines={1}>
             {machine.name}
@@ -68,12 +87,16 @@ export function MobileMachinesScreen() {
         </View>
         <View style={styles.rowTrailing}>
           {busy ? (
-            <ActivityIndicator size="small" color={colors.textSecondary} />
+            <ActivityIndicator
+              size="small"
+              color={colors.textSecondary}
+              accessibilityLabel={`${busy === 'wake' ? 'Waking' : 'Putting to sleep'} ${machine.name}`}
+            />
           ) : action ? (
             <Pressable
               style={styles.actionButton}
-              onPress={() => void machines.act(provider.providerKey, machine.id, action)}
-              disabled={machines.busyMachineId !== null || connState !== 'connected'}
+              onPress={run}
+              disabled={machines.busy !== null || connState !== 'connected'}
               accessibilityRole="button"
               accessibilityLabel={`${action === 'wake' ? 'Wake' : 'Sleep'} ${machine.name}`}
               hitSlop={8}
@@ -114,13 +137,18 @@ export function MobileMachinesScreen() {
         </View>
       )
     }
+    const stale = state.error !== null
     return (
       <>
-        {state.error ? <Text style={styles.providerFailure}>{state.error}</Text> : null}
+        {stale ? (
+          <Text style={styles.providerFailure}>
+            {`Couldn’t refresh; showing machines as of ${staleAge(state.fetchedAt, now)}. ${state.error}`}
+          </Text>
+        ) : null}
         {state.providers.map((provider) => (
           <View key={provider.providerKey} style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Server size={14} color={colors.textSecondary} />
+              <Box size={14} color={colors.textSecondary} />
               <Text style={styles.sectionHeading}>{provider.name}</Text>
             </View>
             {provider.lastFailure ? (
@@ -135,7 +163,7 @@ export function MobileMachinesScreen() {
                 provider.machines.map((machine, index) => (
                   <View key={machine.id}>
                     {index > 0 ? <View style={styles.separator} /> : null}
-                    {renderMachine(provider, machine)}
+                    {renderMachine(provider, machine, stale)}
                   </View>
                 ))
               )}
@@ -143,7 +171,7 @@ export function MobileMachinesScreen() {
           </View>
         ))}
         <View style={styles.footerHint}>
-          <Server size={14} color={colors.textMuted} />
+          <Box size={14} color={colors.textMuted} />
           <Text style={styles.footerHintText}>
             Create, archive and delete machines from the desktop.
           </Text>
@@ -191,6 +219,20 @@ export function MobileMachinesScreen() {
       >
         {renderBody()}
       </ScrollView>
+      <ConfirmModal
+        visible={sleepTarget !== null}
+        title={`Sleep ${sleepTarget?.machine.name ?? ''}?`}
+        message="Terminals and agents running on it stop until it wakes."
+        confirmLabel="Sleep"
+        onConfirm={() => {
+          const target = sleepTarget
+          setSleepTarget(null)
+          if (target) {
+            void machines.act(target.provider.providerKey, target.machine.id, 'sleep')
+          }
+        }}
+        onCancel={() => setSleepTarget(null)}
+      />
       <ConfirmModal
         visible={machines.notice !== null}
         title={machines.notice?.title ?? ''}

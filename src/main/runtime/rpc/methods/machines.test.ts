@@ -66,7 +66,7 @@ describe('machines RPC', () => {
     ).toMatchObject({ ok: false })
   })
 
-  it('lets a phone wake within the mobile scope, logged with its device id', async () => {
+  it('lets a phone wake within the mobile scope, logged with a hashed device id', async () => {
     const wake = vi.fn(async () => ({ id: 'sbx-1', state: 'running' }))
     getMachineService.mockReturnValue({ wake })
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
@@ -78,7 +78,9 @@ describe('machines RPC', () => {
     expect(
       await dispatch('machines.wake', { providerKey: KEY, machineId: 'sbx-1' }, phone)
     ).toMatchObject({ ok: true, result: { ok: true } })
-    expect(info).toHaveBeenCalledWith(expect.stringContaining('by device phone-1'))
+    const logged = String(info.mock.calls[0]?.[0])
+    expect(logged).toMatch(/by device [0-9a-f]{8}$/)
+    expect(logged).not.toContain('phone-1')
     // The mobile scope reaches no machine verb beyond read, wake and sleep.
     expect(await dispatch('machines.create', { providerKey: KEY }, phone)).toMatchObject({
       ok: false

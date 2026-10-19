@@ -40,4 +40,18 @@ describe('machineRowModel', () => {
     expect(machineRowModel(machine, 60_000, now).subtitle).toBe('Temporary · expired')
     expect(machineRowModel(machine, 0, now).subtitle).toMatch(/^Temporary · deletes at /)
   })
+
+  it('names the year for a far expiry and shows no lifetime it does not know', () => {
+    const now = Date.parse('2026-10-18T12:00:00Z')
+    expect(
+      machineRowModel(
+        { ...base, lifetime: 'temporary', state: 'running', expiresAt: '2099-01-01T16:12:00Z' },
+        0,
+        now
+      ).subtitle
+    ).toContain('2099')
+    expect(
+      machineRowModel({ ...base, lifetime: 'forever', state: 'running' }, 0, now).subtitle
+    ).toBe('')
+  })
 })

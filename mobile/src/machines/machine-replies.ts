@@ -32,7 +32,10 @@ export function readMachinesList(reply: RpcResponse): MachinesListOutcome {
 
 export type MachineActionOutcome =
   | { kind: 'done'; machine: MobileMachine }
+  /** The provider answered and refused. */
   | { kind: 'failed'; message: string }
+  /** No answer reached the phone: the action may still be running on the desktop. */
+  | { kind: 'unverified' }
 
 export function readMachineAction(
   reply: RpcResponse,
@@ -42,11 +45,13 @@ export function readMachineAction(
     reply,
     verb === 'wake' ? machineWake.interpret : machineSleep.interpret
   )
-  if (read.kind !== 'answered') {
-    return {
-      kind: 'failed',
-      message: reply.ok ? 'This computer did not accept the request.' : reply.error.message
-    }
+  if (read.kind === 'unavailable') {
+    return { kind: 'failed', message: 'This computer no longer offers machines.' }
+  }
+  if (read.kind === 'failed') {
+    return reply.ok
+      ? { kind: 'failed', message: 'This computer sent an unreadable reply.' }
+      : { kind: 'unverified' }
   }
   return read.value.ok
     ? { kind: 'done', machine: read.value.value }

@@ -5,12 +5,12 @@ import {
 } from '../worktree/workspace-options-copy'
 import { WorkspaceOptionsCountBadge } from './workspace-options-count-badge'
 import {
+  Box,
   ChevronLeft,
   List,
   PanelLeftClose,
   Plus,
   Search,
-  Server,
   SquareTerminal,
   UserCircle,
   X
@@ -122,7 +122,7 @@ export function HostScreenHeader({ controller }: { controller: HostScreenControl
             accessibilityLabel="Machines"
             hitSlop={8}
           >
-            <Server
+            <Box
               size={18}
               color={connState === 'connected' ? colors.textPrimary : colors.textMuted}
             />
@@ -231,8 +231,9 @@ export function HostScreenHeader({ controller }: { controller: HostScreenControl
                 disabled={connState !== 'connected'}
                 accessibilityRole="button"
                 accessibilityLabel="Machines"
+                hitSlop={8}
               >
-                <Server
+                <Box
                   size={16}
                   color={connState === 'connected' ? colors.textSecondary : colors.textMuted}
                 />

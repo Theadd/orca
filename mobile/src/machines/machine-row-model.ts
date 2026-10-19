@@ -3,6 +3,10 @@ import { colors } from '../theme/mobile-theme'
 import type { MobileMachine } from './machine-operations'
 
 const DAY_MS = 24 * 60 * 60_000
+const LIFETIME_LABELS: Record<string, string> = {
+  persistent: 'Persistent',
+  temporary: 'Temporary'
+}
 
 export type MachineRowModel = {
   stateLabel: string
@@ -45,6 +49,7 @@ function expiryLabel(
       : expiry.toLocaleString([], {
           month: 'short',
           day: 'numeric',
+          ...(expiry.getFullYear() !== new Date(now).getFullYear() ? { year: 'numeric' } : {}),
           hour: 'numeric',
           minute: '2-digit'
         })
@@ -57,7 +62,8 @@ export function machineRowModel(
   now: number
 ): MachineRowModel {
   const state = STATE_LABELS[machine.state] ?? { label: 'Unknown', color: colors.textMuted }
-  const lifetime = machine.lifetime === 'temporary' ? 'Temporary' : 'Persistent'
+  // A lifetime this build doesn't know shows nothing rather than a wrong word.
+  const lifetime = LIFETIME_LABELS[machine.lifetime] ?? null
   const expiry = expiryLabel(machine, clockOffsetMs, now)
   return {
     stateLabel: state.label,

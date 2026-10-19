@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type {
   MachineActionResult,
   MachineProviderSnapshot
@@ -18,11 +19,13 @@ function run<T>(action: (service: MachineService) => Promise<T>): Promise<Machin
   return service ? toMachineActionResult(() => action(service)) : Promise.resolve(MACHINES_DISABLED)
 }
 
+// A short hash: enough to tell a log's devices apart without writing their ids into it.
 function callerLabel(ctx: RpcContext): string {
   const caller = ctx.caller
-  return caller?.kind === 'paired-device'
-    ? `device ${caller.deviceId}`
-    : (caller?.kind ?? 'unknown')
+  if (caller?.kind !== 'paired-device') {
+    return caller?.kind ?? 'unknown'
+  }
+  return `device ${createHash('sha256').update(caller.deviceId).digest('hex').slice(0, 8)}`
 }
 
 async function listMachines(
