@@ -235,6 +235,13 @@ export function isUserManagedRuntimeEnvironment(
   return !isEphemeralVmRuntimeEnvironment(environment)
 }
 
+/** Only the user re-pairs these, with an access link; Orca pairs managed and cloud servers itself. */
+export function isRepairableWithAccessLink(
+  environment: Pick<PublicKnownRuntimeEnvironment, 'source' | 'orcadDeployment'>
+): boolean {
+  return !environment.orcadDeployment && isUserManagedRuntimeEnvironment(environment)
+}
+
 /** A WSL distro added as a host; keyed by its deployment record's kind, never by its name. */
 export function isWslHostRuntimeEnvironment<
   T extends { orcadDeployment?: OrcadDeploymentLink | null }

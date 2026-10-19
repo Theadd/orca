@@ -154,10 +154,9 @@ export class ManagedOrcadPairingRepairs {
     if (!deployment) {
       throw new OrcadManagedPairingRepairFailedError('this server is not managed over SSH')
     }
-    // Why counted after connecting: losing SSH proves nothing about the pairing.
-    const host = await this.deps.connect(environment)
+    // Why counted only once read: losing SSH proves nothing about the pairing.
+    const readiness = await this.deps.readReadiness(await this.deps.connect(environment))
     this.attemptedAt.set(environmentId, [...recent, now])
-    const readiness = await this.deps.readReadiness(host)
     const pairingCode = this.publishedPairingCode(environmentId, readiness, deployment.localPort)
     const offer = parsePairingCode(pairingCode)
     const pinned = getPreferredPairingOffer(environment)
@@ -178,6 +177,11 @@ export class ManagedOrcadPairingRepairs {
           'the server still offers the pairing it refused; restarting it on the host issues a new one'
         )
       )
+    }
+    // Why re-read: an update or recovery may have stored a newer pairing while SSH answered.
+    const current = this.deps.resolve(environmentId)
+    if (pairingRevisionOf(current) !== refusedRevision) {
+      return current
     }
     let repaired: KnownRuntimeEnvironment
     try {

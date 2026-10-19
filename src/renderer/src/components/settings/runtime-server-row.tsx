@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AlertTriangle, Link2, Loader2, Server, ServerOff, Trash2 } from 'lucide-react'
 import {
-  isUserManagedRuntimeEnvironment,
+  isRepairableWithAccessLink,
   type PublicKnownRuntimeEnvironment
 } from '../../../../shared/runtime-environments'
 import type { RemoteServerUpdateEntry } from '@/runtime/remote-server-update-coordinator'
@@ -100,8 +100,7 @@ export function RuntimeServerRow({
     snapshot?.verification === 'blocked' &&
     !snapshot.retired &&
     snapshot.blockedReason === 'access-revoked'
-  // Why: managed and cloud-workspace servers are paired by the service that owns them.
-  const repairable = !environment.orcadDeployment && isUserManagedRuntimeEnvironment(environment)
+  const repairable = isRepairableWithAccessLink(environment)
   const detailsDescription = !accessRevoked
     ? getHostDetailsDescription(effectiveDetails)
     : environment.orcadDeployment

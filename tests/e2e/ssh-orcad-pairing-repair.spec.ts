@@ -104,7 +104,10 @@ test('a server that now holds another host key is never paired, and connecting s
     await expect
       .poll(
         async () => {
-          connected = await reconnect(page, seeded.targetId)
+          // The helper throws when the connect is refused; the refusal is the answer here.
+          connected = await reconnect(page, seeded.targetId).catch((error: unknown) =>
+            String(error)
+          )
           return connected
         },
         { timeout: 3 * 60_000, intervals: [1_000, 5_000] }

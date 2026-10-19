@@ -27,6 +27,7 @@ import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { sshConnectVerb } from '@/ssh/ssh-connect-verb'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
+import { isRepairableWithAccessLink } from '../../../../shared/runtime-environments'
 import { describeRuntimeCompatBlock } from '../../../../shared/protocol-compat'
 import { clearRuntimeCompatibilityCache } from '@/runtime/runtime-rpc-client'
 import { unwrapRuntimeRpcResult } from '@/runtime/runtime-rpc-result'
@@ -84,16 +85,21 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
     return s.sshConnectionStates.get(parsed.targetId)?.status ?? null
   })
 
+  const parsedHost = parseExecutionHostId(row.hostId)
+  const runtimeEnvironmentId = parsedHost?.kind === 'runtime' ? parsedHost.environmentId : null
+  const repairableWithAccessLink = useAppStore((s) => {
+    const environment = s.runtimeEnvironments.find((entry) => entry.id === runtimeEnvironmentId)
+    return environment ? isRepairableWithAccessLink(environment) : true
+  })
   const model = buildHostHeaderMenuModel({
     kind: row.kind,
     health: row.health,
     sshConnected: sshStatus === 'connected',
     compatibility: row.compatibility,
-    blockedReason: row.blockedReason
+    blockedReason: row.blockedReason,
+    repairableWithAccessLink
   })
   const removalTarget = resolveHostRemoval(row.hostId)
-  const parsedHost = parseExecutionHostId(row.hostId)
-  const runtimeEnvironmentId = parsedHost?.kind === 'runtime' ? parsedHost.environmentId : null
 
   const handleManage = useCallback(() => {
     openManageHost(row)

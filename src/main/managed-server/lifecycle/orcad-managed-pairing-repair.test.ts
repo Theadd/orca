@@ -192,6 +192,27 @@ describe('ManagedOrcadPairingRepairs', () => {
     await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBeDefined()
   })
 
+  it('does not count an SSH read that dropped mid-way', async () => {
+    const state = setup(() => readiness(offer('fresh-token')))
+    for (let i = 0; i <= MAX_PAIRING_REPAIRS_PER_WINDOW; i++) {
+      state.deps.readReadiness.mockRejectedValueOnce(new Error('ssh: channel closed'))
+      await expect(state.repairs.repair('env-1', REFUSED)).rejects.toThrow('channel closed')
+    }
+    await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBeDefined()
+  })
+
+  it('keeps a pairing an update stored while the host was being read', async () => {
+    const state = setup(() => readiness(offer('fresh-token')))
+    const updated = environment('updated-token', 7)
+    state.deps.readReadiness.mockImplementationOnce(async () => {
+      state.deps.resolve.mockReturnValue(updated)
+      return readiness(offer('stale-token'))
+    })
+    await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBe(updated)
+    expect(state.deps.refresh).not.toHaveBeenCalled()
+    expect(state.deps.repaired).not.toHaveBeenCalled()
+  })
+
   it('caps attempts per window, failed ones included', async () => {
     let issued = 0
     const state = setup(() => readiness(offer(issued++ % 2 ? `issued-${issued}` : 'refused-token')))

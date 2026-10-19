@@ -19,7 +19,10 @@ import {
 } from '../../../../shared/execution-host'
 import { buildExecutionHostRegistry } from '../../../../shared/execution-host-registry'
 import { pickerExecutionHosts } from '../../../../shared/managed-orcad-execution-host'
-import { isListedRemoteServer } from '../../../../shared/runtime-environments'
+import {
+  isListedRemoteServer,
+  isRepairableWithAccessLink
+} from '../../../../shared/runtime-environments'
 import { RuntimeHostStatusRow } from './RuntimeHostStatusRow'
 import { connectedHostCountLabel, connectingHostsLabel } from './ssh-status-segment-copy'
 import { SshTargetStatusRow } from './SshTargetStatusRow'
@@ -103,7 +106,8 @@ export function SshStatusSegment({
         blocked: blockedReason
           ? {
               ...runtimeHostBlockedCopy(blockedReason, registryHost?.compatibility),
-              canRepair: blockedReason === 'access-revoked'
+              canRepair:
+                blockedReason === 'access-revoked' && isRepairableWithAccessLink(environment)
             }
           : null,
         snapshot: statusEntry?.snapshot,
