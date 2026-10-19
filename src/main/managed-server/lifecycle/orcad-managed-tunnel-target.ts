@@ -8,7 +8,7 @@ import {
   type OrcadTunnelPortInput
 } from './orcad-managed-bound-port'
 import {
-  OrcadManagedIdentityError,
+  orcadIdentityRefusal,
   verifyManagedOrcadTunnelIdentity,
   type OrcadTunnelIdentity
 } from './orcad-managed-tunnel-identity'
@@ -119,7 +119,7 @@ export async function forwardToVerifiedOrcad(
       await args.forwards.removeForwardAndWait(forward.id)
       return null
     }
-    if (identity.verdict !== 'foreign') {
+    if (identity.verdict === 'verified' || identity.verdict === 'unreachable') {
       if (identity.verdict === 'unreachable') {
         // Why not fail: a server that is down or still starting is not a wrong server.
         console.warn(
@@ -132,7 +132,7 @@ export async function forwardToVerifiedOrcad(
     const reread =
       attempt === 0 && args.rereadRemotePort ? await args.rereadRemotePort() : remotePort
     if (reread === remotePort || !args.stillCurrent()) {
-      throw new OrcadManagedIdentityError(remotePort, identity.detail)
+      throw orcadIdentityRefusal(remotePort, identity)
     }
     remotePort = reread
   }

@@ -8,7 +8,7 @@ import { errorMessage } from '../../shared/error-message'
 import type { ServeReadiness } from '../server/serve-readiness'
 import type { OrcadHostTransport } from '../ssh/orcad-host-transport'
 import {
-  OrcadManagedIdentityError,
+  orcadIdentityRefusal,
   type OrcadTunnelIdentity
 } from '../managed-server/lifecycle/orcad-managed-tunnel-identity'
 import { tunneledOrcadPairingCode } from '../ssh/orcad-tunneled-pairing'
@@ -255,8 +255,8 @@ export class WslOrcadConnectionManager {
         pairingOffer,
         launch.readiness
       )
-      if (identity.verdict === 'foreign') {
-        throw new OrcadManagedIdentityError(launch.port, identity.detail)
+      if (identity.verdict === 'foreign' || identity.verdict === 'unpaired') {
+        throw orcadIdentityRefusal(launch.port, identity)
       }
       if (identity.verdict === 'unreachable') {
         // Why not fail: a server that is still starting is not a wrong server.

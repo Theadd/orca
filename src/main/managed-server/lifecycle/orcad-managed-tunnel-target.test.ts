@@ -6,6 +6,7 @@ import type { SshConnection } from '../../ssh/connection/ssh-connection'
 import type { SshPortForwardManager } from '../../ssh/port-forwarding/ssh-port-forward'
 import {
   OrcadManagedIdentityError,
+  OrcadManagedPairingRejectedError,
   type OrcadTunnelIdentity
 } from './orcad-managed-tunnel-identity'
 import {
@@ -84,6 +85,18 @@ describe('forwardToVerifiedOrcad', () => {
     const result = forwardToVerifiedOrcad(state.args)
     await expect(result).rejects.toBeInstanceOf(OrcadManagedIdentityError)
     await expect(result).rejects.toThrow(/orcad_identity_mismatch.*remote port 6768/)
+    expect(state.removeForwardAndWait).toHaveBeenCalledWith('forward-1')
+  })
+
+  it('says the host dropped this pairing, not that another Orca holds the port', async () => {
+    const state = setup(
+      [{ verdict: 'unpaired', detail: 'Remote Orca runtime rejected the pairing token.' }],
+      6_768
+    )
+    const result = forwardToVerifiedOrcad(state.args)
+    await expect(result).rejects.toBeInstanceOf(OrcadManagedPairingRejectedError)
+    await expect(result).rejects.toThrow(/no longer accepts this desktop's pairing/)
+    await expect(result).rejects.not.toThrow(/another Orca/)
     expect(state.removeForwardAndWait).toHaveBeenCalledWith('forward-1')
   })
 
