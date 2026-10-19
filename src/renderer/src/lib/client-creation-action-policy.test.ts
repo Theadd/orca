@@ -3,6 +3,7 @@ import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../shared/constants'
 import type { RuntimeStatus } from '../../../shared/runtime-types'
 import { toRuntimeExecutionHostId, toSshExecutionHostId } from '../../../shared/execution-host'
 import { folderWorkspaceKey } from '../../../shared/workspace-scope'
+import { BROWSER_CLIENT_HOSTING_RUNTIME_CAPABILITIES } from '../../../shared/browser-client-hosting-eligibility'
 import {
   FLOATING_BROWSER_UNAVAILABLE_MESSAGE,
   LOCAL_BROWSER_UNAVAILABLE_MESSAGE,
@@ -10,8 +11,10 @@ import {
   MOBILE_EMULATOR_UNAVAILABLE_MESSAGE,
   assertClientCreationActionAvailable,
   assertManagedBrowserMaterializationAllowed,
+  assertRuntimeManagedBrowserCreationAvailable,
   getClientCreationActionPolicy,
-  resolveClientCreationActionPolicy
+  resolveClientCreationActionPolicy,
+  runtimeHostsPagesOnThisDesktop
 } from './client-creation-action-policy'
 
 function runtimeStatus(capabilities?: string[]): RuntimeStatus {
@@ -206,5 +209,53 @@ describe('client creation action guards', () => {
     expect(
       getClientCreationActionPolicy(state as never, 'ssh-worktree')['managed-browser']
     ).toEqual({ state: 'hidden', reason: MANAGED_BROWSER_UNAVAILABLE_MESSAGE })
+  })
+})
+
+describe('a runtime whose pages this desktop hosts', () => {
+  const CLIENT_HOSTING = [...BROWSER_CLIENT_HOSTING_RUNTIME_CAPABILITIES]
+  function desktopState(environment: { id: string; orcadDeployment?: unknown }) {
+    return {
+      settings: { activeRuntimeEnvironmentId: environment.id },
+      runtimeEnvironments: [environment],
+      runtimeStatusByEnvironmentId: new Map([
+        [environment.id, { status: runtimeStatus(CLIENT_HOSTING), checkedAt: 1 }]
+      ])
+    }
+  }
+
+  it('creates runtime-placed tabs for a paired server with no browser of its own', () => {
+    const state = desktopState({ id: 'orcad-server' })
+    expect(runtimeHostsPagesOnThisDesktop(state as never, 'orcad-server')).toBe(true)
+    expect(getClientCreationActionPolicy(state as never, null)['managed-browser']).toEqual({
+      state: 'enabled',
+      provider: 'paired-runtime'
+    })
+    expect(() =>
+      assertRuntimeManagedBrowserCreationAvailable(state as never, 'orcad-server')
+    ).not.toThrow()
+  })
+
+  it('keeps a managed SSH deployment on its desktop tabs and SSH browser route', () => {
+    const state = desktopState({
+      id: 'managed-ssh',
+      orcadDeployment: { kind: 'ssh', sshTargetId: 'target-1', sshTargetGeneration: 1 }
+    })
+    expect(runtimeHostsPagesOnThisDesktop(state as never, 'managed-ssh')).toBe(false)
+    expect(getClientCreationActionPolicy(state as never, null)['managed-browser']).toEqual({
+      state: 'enabled',
+      provider: 'local-client'
+    })
+  })
+
+  it('stays off when desktop-hosted remote pages are turned off, and in the web client', () => {
+    const state = desktopState({ id: 'orcad-server' })
+    const disabled = {
+      ...state,
+      settings: { ...state.settings, browserClientHostedRemoteEnabled: false }
+    }
+    expect(runtimeHostsPagesOnThisDesktop(disabled as never, 'orcad-server')).toBe(false)
+    vi.stubGlobal('__ORCA_WEB_CLIENT__', true)
+    expect(runtimeHostsPagesOnThisDesktop(state as never, 'orcad-server')).toBe(false)
   })
 })
