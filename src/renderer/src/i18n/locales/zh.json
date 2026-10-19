@@ -1139,6 +1139,10 @@
           "connectFailed": "无法连接到 {{name}}。",
           "noProjectRoot": "提供方未说明 {{name}} 上项目的位置。",
           "noServer": "Orca 无法在 {{name}} 上启动其服务器，而设置项目需要该服务器。"
+        },
+        "machineProviderActions": {
+          "signInStarted": "完成 {{provider}} 登录后，返回你的工作树。",
+          "backToComposer": "返回新建工作树"
         }
       }
     },

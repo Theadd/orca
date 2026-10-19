@@ -1243,6 +1243,10 @@
           "connectFailed": "Impossible de se connecter à {{name}}.",
           "noProjectRoot": "Le fournisseur n’a pas indiqué où se trouvent les projets sur {{name}}.",
           "noServer": "Orca n’a pas pu démarrer son serveur sur {{name}}, nécessaire pour configurer le projet."
+        },
+        "machineProviderActions": {
+          "signInStarted": "Terminez la connexion à {{provider}}, puis revenez à votre worktree.",
+          "backToComposer": "Revenir au nouveau worktree"
         }
       }
     },

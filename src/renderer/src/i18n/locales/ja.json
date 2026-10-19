@@ -1139,6 +1139,10 @@
           "connectFailed": "{{name}} に接続できませんでした。",
           "noProjectRoot": "プロバイダーは {{name}} 上のプロジェクトの場所を示しませんでした。",
           "noServer": "Orca は {{name}} でサーバーを起動できませんでした。プロジェクトの準備にはサーバーが必要です。"
+        },
+        "machineProviderActions": {
+          "signInStarted": "{{provider}} へのサインインを完了してから、ワークツリーに戻ってください。",
+          "backToComposer": "新しいワークツリーに戻る"
         }
       }
     },

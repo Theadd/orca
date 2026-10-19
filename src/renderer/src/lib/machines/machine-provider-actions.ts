@@ -2,7 +2,9 @@ import type { MachineProviderKey } from '../../../../shared/machine-inventory'
 import { buildShellCommandFromArgv } from '../../../../shared/tui-agent-startup-shell'
 import { resolveLocalWindowsAgentStartupShell } from '../../../../shared/windows-terminal-shell'
 import { getWorktreeExecutionHostId, isLocalExecutionHost } from '../../../../shared/execution-host'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store'
+import { translate } from '@/i18n/i18n'
 import { findWorktreeById } from '@/store/slices/worktree-helpers'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 
@@ -39,13 +41,41 @@ function localActiveWorktreeId(): string | null {
   return isLocalExecutionHost(getWorktreeExecutionHostId(worktree, repo)) ? worktree.id : null
 }
 
+/** Offers the way back to the composer the sign-in closed, with what was typed. */
+function offerComposerReturn(providerName: string, reopenComposer: () => void): void {
+  toast(
+    translate(
+      'auto.lib.machines.machineProviderActions.signInStarted',
+      'Finish signing in to {{provider}}, then go back to your worktree.',
+      { provider: providerName }
+    ),
+    {
+      duration: Number.POSITIVE_INFINITY,
+      action: {
+        label: translate(
+          'auto.lib.machines.machineProviderActions.backToComposer',
+          'Back to new worktree'
+        ),
+        onClick: reopenComposer
+      }
+    }
+  )
+}
+
 /**
  * Runs the provider's sign-in command where the user can see it: a new terminal tab in the active
  * local worktree. With nowhere local to run it, opens the provider's settings instead.
  */
-export function signInToMachineProvider(providerKey: MachineProviderKey): void {
-  const argv = useAppStore.getState().machineProviders[providerKey]?.capabilities?.signInCommand
+export function signInToMachineProvider(
+  providerKey: MachineProviderKey,
+  reopenComposer?: () => void
+): void {
+  const provider = useAppStore.getState().machineProviders[providerKey]
+  const argv = provider?.capabilities?.signInCommand
   const worktreeId = localActiveWorktreeId()
+  if (reopenComposer) {
+    offerComposerReturn(provider?.name ?? '', reopenComposer)
+  }
   if (!argv || !worktreeId) {
     openMachineProviderSettings()
     return
@@ -57,7 +87,7 @@ export function signInToMachineProvider(providerKey: MachineProviderKey): void {
       isRemote: false,
       terminalWindowsShell: store.settings?.terminalWindowsShell
     }) ?? 'posix'
-  // Why: the composer keeps its draft, and the sign-in terminal must not sit under the dialog.
+  // Why: the sign-in terminal must not sit under the dialog; the toast above leads back.
   store.closeModal()
   const tab = store.createTab(worktreeId)
   store.setActiveTab(tab.id)

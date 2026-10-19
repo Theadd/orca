@@ -1139,6 +1139,10 @@
           "connectFailed": "{{name}}에 연결할 수 없습니다.",
           "noProjectRoot": "공급자가 {{name}}에서 프로젝트 위치를 알려 주지 않았습니다.",
           "noServer": "Orca가 {{name}}에서 서버를 시작할 수 없습니다. 프로젝트를 설정하려면 서버가 필요합니다."
+        },
+        "machineProviderActions": {
+          "signInStarted": "{{provider}} 로그인을 마친 후 워크트리로 돌아가세요.",
+          "backToComposer": "새 워크트리로 돌아가기"
         }
       }
     },

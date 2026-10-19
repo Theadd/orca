@@ -1319,6 +1319,10 @@
           "connectFailed": "Couldn’t connect to {{name}}.",
           "noProjectRoot": "The provider didn’t say where projects live on {{name}}.",
           "noServer": "Orca couldn’t start its server on {{name}}, which it needs to set up the project."
+        },
+        "machineProviderActions": {
+          "signInStarted": "Finish signing in to {{provider}}, then go back to your worktree.",
+          "backToComposer": "Back to new worktree"
         }
       }
     },
