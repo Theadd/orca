@@ -9,13 +9,21 @@ export type SharedControlRefusalHandler = (
 
 let recovery: RefusedPairingRecovery = () => null
 let sharedControlHandler: SharedControlRefusalHandler = () => null
+let connectRequested: (environmentId: string) => void = () => {}
 
 export function setRefusedPairingHandlers(handlers: {
   recover: RefusedPairingRecovery
   sharedControl: SharedControlRefusalHandler
+  connectRequested: (environmentId: string) => void
 }): void {
   recovery = handlers.recover
   sharedControlHandler = handlers.sharedControl
+  connectRequested = handlers.connectRequested
+}
+
+/** An explicit Connect is the user asking again, so a recently failed re-pair must not answer it. */
+export function noteRuntimeEnvironmentConnectRequested(environmentId: string): void {
+  connectRequested(environmentId)
 }
 
 /** Null when nobody can pair this server again, so the refusal stands. */

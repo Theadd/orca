@@ -69,6 +69,19 @@ describe('handleManagedSharedControlRefusal', () => {
     expect(mocks.authenticationRejected).toHaveBeenCalledWith(failure.message)
   })
 
+  it('settles quietly when the server was removed while it re-paired', async () => {
+    mocks.resolveEnvironment.mockReturnValue(SSH_MANAGED)
+    mocks.authenticationRejected.mockImplementation(() => {
+      throw new Error('Unknown runtime environment')
+    })
+    const recover = vi
+      .fn()
+      .mockRejectedValue(new OrcadManagedPairingRepairFailedError('the server refused it'))
+    await expect(handleManagedSharedControlRefusal('/profile', 'env-1', recover)).resolves.toBe(
+      'stop'
+    )
+  })
+
   it('keeps retrying after lost contact, which is no verdict on the pairing', async () => {
     mocks.resolveEnvironment.mockReturnValue(SSH_MANAGED)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

@@ -99,9 +99,21 @@ test('a server that now holds another host key is never paired, and connecting s
     // The server's identity is reset: a new key and no devices, as a wiped profile would have.
     host.exec!(`rm -f ${KEYPAIR} ${DEVICES} && ${KILL_ORCAD}`)
 
-    const connected = await reconnect(page, seeded.targetId)
-    expect(connected).toMatch(/orcad_identity_mismatch/)
+    // The first connect may find the server down and start it; the next one meets the new key.
+    let connected = ''
+    await expect
+      .poll(
+        async () => {
+          connected = await reconnect(page, seeded.targetId)
+          return connected
+        },
+        { timeout: 3 * 60_000, intervals: [1_000, 5_000] }
+      )
+      .toMatch(/orcad_identity_mismatch/)
     expect(connected).not.toMatch(/pairing_repair/)
+    expect(await pairing(page, environmentId)).toEqual(before)
+    // Nothing re-pairs in the background either.
+    await page.waitForTimeout(20_000)
     expect(await pairing(page, environmentId)).toEqual(before)
     await page.screenshot({ path: testInfo.outputPath('foreign.png') })
   })

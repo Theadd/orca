@@ -34,6 +34,7 @@ import {
 } from './runtime-environment-manual-disconnect'
 import { callRuntimeEnvironment } from './runtime-environment-transport-routing'
 import { getRuntimeEnvironmentStatus } from './runtime-environment-status-probe'
+import { noteRuntimeEnvironmentConnectRequested } from './runtime-environment-pairing-refusal-registry'
 import { publicRuntimeEnvironmentWithHostKey } from './runtime-environment-host-key'
 import { withWslOrcadAccountEnv } from '../../wsl/wsl-orcad-account-env'
 import { clearSshCredentialDeclinedForEnvironment } from '../../ssh/ssh-credential-decline'
@@ -165,6 +166,7 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
       const environment = resolveEnvironment(getUserDataPath(), args.selector)
       assertWslHostReachable(environment)
       clearRuntimeEnvironmentManualDisconnect(environment.id)
+      noteRuntimeEnvironmentConnectRequested(environment.id)
       clearSshCredentialDeclinedForEnvironment(environment)
       await liftSshUserDisconnectForEnvironment(environment)
       await connectThroughOwningService(environment)

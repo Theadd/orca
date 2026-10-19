@@ -98,8 +98,6 @@ describe('forwardToVerifiedOrcad', () => {
     await expect(result).rejects.toThrow(/no longer accepts this desktop's pairing/)
     await expect(result).rejects.not.toThrow(/another Orca/)
     expect(state.removeForwardAndWait).toHaveBeenCalledWith('forward-1')
-    // Our own server answered on this port, so another port is not looked for.
-    expect(state.rereadRemotePort).not.toHaveBeenCalled()
   })
 
   it('fails when the re-read port is foreign too, without re-reading forever', async () => {

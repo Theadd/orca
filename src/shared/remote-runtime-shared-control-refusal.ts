@@ -47,11 +47,14 @@ export function closeSharedControlAfterError(args: {
     return
   }
   // Why closed only: an on-demand open may already be under way when the recovery settles.
-  void recovery.then((next) => {
-    if (next === 'retry' && args.isClosed()) {
-      args.retry()
-      args.publishDiagnostics()
-    }
-  })
+  // A recovery that threw leaves no owner, so the socket retries as usual.
+  void recovery
+    .catch(() => 'retry' as const)
+    .then((next) => {
+      if (next === 'retry' && args.isClosed()) {
+        args.retry()
+        args.publishDiagnostics()
+      }
+    })
   args.publishDiagnostics()
 }

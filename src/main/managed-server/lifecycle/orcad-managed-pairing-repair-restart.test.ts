@@ -96,6 +96,7 @@ function repairsAgainst(saved: KnownRuntimeEnvironment, readiness: ServeReadines
     }),
     readReadiness: async () => readiness,
     refresh,
+    repaired: vi.fn(),
     now: () => 0
   })
   return { repairs, refresh }
@@ -121,7 +122,7 @@ describe('a managed orcad that dropped this desktop and restarted', () => {
     expect(refused.verdict).toBe('unpaired')
 
     const { repairs, refresh } = repairsAgainst(savedEnvironment(reached), readiness)
-    const repaired = await repairs.repair('env-1')
+    const repaired = await repairs.repair('env-1', 1)
     expect(refresh).toHaveBeenCalledOnce()
     await expect(verifyManagedOrcadTunnelIdentity(repaired)).resolves.toEqual({
       verdict: 'verified'
@@ -141,7 +142,7 @@ describe('a managed orcad that dropped this desktop and restarted', () => {
     ).resolves.toMatchObject({ verdict: 'foreign' })
 
     const { repairs, refresh } = repairsAgainst(savedEnvironment(reached), other)
-    await expect(repairs.repair('env-1')).rejects.toBeInstanceOf(OrcadManagedIdentityError)
+    await expect(repairs.repair('env-1', 1)).rejects.toBeInstanceOf(OrcadManagedIdentityError)
     expect(refresh).not.toHaveBeenCalled()
   })
 })

@@ -22,7 +22,6 @@ import {
   buildWithPairingRepair,
   type ManagedOrcadPairingRecovery
 } from './orcad-managed-tunnel-pairing-recovery'
-import { notifyManagedOrcadPairingRepaired } from './orcad-managed-pairing-repaired-listener'
 
 const managedTunnels = new OrcadManagedTunnelManager({
   getConnectionManager: getSshConnectionManager,
@@ -47,7 +46,10 @@ function pairingRecovery(userDataPath: string): ManagedOrcadPairingRecovery {
   return {
     resolve: (environmentId) => resolveEnvironment(userDataPath, environmentId),
     repairs,
-    repaired: notifyManagedOrcadPairingRepaired
+    ensure: (environment) =>
+      managedTunnels.ensure(environment, () =>
+        resolveEnvironmentOrNull(userDataPath, environment.id)
+      )
   }
 }
 
@@ -83,12 +85,12 @@ export function recoverRefusedManagedOrcadPairing(
   return rebuildOrcadManagedTunnel(userDataPath, environmentId)
 }
 
-/** An explicit connect is the user asking again, so a recent failed re-pair must not answer it. */
+/** An explicit connect is the user asking again, so recent failed re-pairs must not answer it. */
 export function forgetFailedManagedOrcadPairingRepair(
   userDataPath: string,
   environmentId: string
 ): void {
-  pairingRepairs.get(userDataPath)?.forgetHeldFailure(environmentId)
+  pairingRepairs.get(userDataPath)?.forgetFailures(environmentId)
 }
 
 function resolveEnvironmentOrNull(userDataPath: string, id: string) {

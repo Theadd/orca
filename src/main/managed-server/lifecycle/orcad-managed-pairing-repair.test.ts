@@ -14,6 +14,7 @@ import type { OrcadHostTransport } from '../../ssh/orcad-host-transport'
 import {
   ManagedOrcadPairingRepairs,
   MAX_PAIRING_REPAIRS_PER_WINDOW,
+  pairingRevisionOf,
   PAIRING_REPAIR_FAILURE_HOLD_MS,
   PAIRING_REPAIR_WINDOW_MS
 } from './orcad-managed-pairing-repair'
@@ -36,12 +37,12 @@ function offer(deviceToken: string, publicKeyB64 = KEY): PairingOffer {
   }
 }
 
-function environment(deviceToken: string): KnownRuntimeEnvironment {
+function environment(deviceToken: string, revision = 1): KnownRuntimeEnvironment {
   return {
     ...createEnvironmentFromPairingOffer({
       id: 'env-1',
       name: 'Box server',
-      now: 1,
+      now: revision,
       offer: offer(deviceToken),
       connectionDependency: 'ssh-tunnel'
     }),
@@ -74,8 +75,10 @@ function readiness(published: PairingOffer | null): ServeReadiness {
   }
 }
 
+const REFUSED = 1
+
 function setup(published: () => ServeReadiness | null) {
-  let current = environment('refused-token')
+  let current = environment('refused-token', REFUSED)
   let now = 0
   const deps = {
     resolve: vi.fn(() => current),
@@ -87,14 +90,18 @@ function setup(published: () => ServeReadiness | null) {
     })),
     readReadiness: vi.fn(async () => published()),
     refresh: vi.fn((_id: string, _code: string) => {
-      current = environment(`fresh-${deps.refresh.mock.calls.length}`)
+      const count = deps.refresh.mock.calls.length
+      current = environment(`fresh-${count}`, REFUSED + count)
       return current
     }),
+    repaired: vi.fn(),
     now: () => now
   }
   return {
     deps,
     repairs: new ManagedOrcadPairingRepairs(deps),
+    /** The next refusal, seen under whatever pairing is stored now. */
+    refuseCurrent: () => pairingRevisionOf(current),
     advance: (ms: number) => {
       now += ms
     }
@@ -102,29 +109,45 @@ function setup(published: () => ServeReadiness | null) {
 }
 
 describe('ManagedOrcadPairingRepairs', () => {
-  it('keeps the offer the server publishes now, with the pinned key, at the tunnel port', async () => {
+  it('keeps the offer the server publishes now and retires the refused transports once', async () => {
     const state = setup(() => readiness(offer('fresh-token')))
-    await state.repairs.repair('env-1')
-    const code = state.deps.refresh.mock.calls[0]?.[1] ?? ''
-    expect(code).toContain('orca://')
+    const repaired = await state.repairs.repair('env-1', REFUSED)
     expect(state.deps.refresh).toHaveBeenCalledOnce()
+    expect(state.deps.repaired).toHaveBeenCalledExactlyOnceWith('env-1')
+    expect(pairingRevisionOf(repaired)).not.toBe(REFUSED)
   })
 
   it('runs one repair at a time for concurrent refusals', async () => {
     const state = setup(() => readiness(offer('fresh-token')))
-    await Promise.all([state.repairs.repair('env-1'), state.repairs.repair('env-1')])
+    await Promise.all([
+      state.repairs.repair('env-1', REFUSED),
+      state.repairs.repair('env-1', REFUSED)
+    ])
     expect(state.deps.readReadiness).toHaveBeenCalledOnce()
+    expect(state.deps.repaired).toHaveBeenCalledOnce()
+  })
+
+  it('answers a late refusal of the old pairing with the stored one, without the host', async () => {
+    const state = setup(() => readiness(offer('fresh-token')))
+    const first = await state.repairs.repair('env-1', REFUSED)
+    // A build that started on the old pairing is refused after the repair landed.
+    await expect(state.repairs.repair('env-1', REFUSED)).resolves.toEqual(first)
+    expect(state.deps.readReadiness).toHaveBeenCalledOnce()
+    expect(state.deps.repaired).toHaveBeenCalledOnce()
   })
 
   it('refuses an offer under another host key, so a foreign server stays foreign', async () => {
     const state = setup(() => readiness(offer('fresh-token', 'other-key')))
-    await expect(state.repairs.repair('env-1')).rejects.toBeInstanceOf(OrcadManagedIdentityError)
+    await expect(state.repairs.repair('env-1', REFUSED)).rejects.toBeInstanceOf(
+      OrcadManagedIdentityError
+    )
     expect(state.deps.refresh).not.toHaveBeenCalled()
+    expect(state.deps.repaired).not.toHaveBeenCalled()
   })
 
   it('says why when the server still offers the token it refused', async () => {
     const state = setup(() => readiness(offer('refused-token')))
-    await expect(state.repairs.repair('env-1')).rejects.toThrow(
+    await expect(state.repairs.repair('env-1', REFUSED)).rejects.toThrow(
       /still offers the pairing it refused/
     )
     expect(state.deps.refresh).not.toHaveBeenCalled()
@@ -135,46 +158,65 @@ describe('ManagedOrcadPairingRepairs', () => {
     ['offers no pairing', () => readiness(null), /isn't offering a pairing/]
   ])('fails clearly when the server %s', async (_name, published, message) => {
     const state = setup(published)
-    const failure = state.repairs.repair('env-1')
+    const failure = state.repairs.repair('env-1', REFUSED)
     await expect(failure).rejects.toBeInstanceOf(OrcadManagedPairingRepairFailedError)
     await expect(failure).rejects.toThrow(message)
   })
 
+  it('reports a pairing the store would not keep as a failed repair', async () => {
+    const state = setup(() => readiness(offer('fresh-token')))
+    state.deps.refresh.mockImplementationOnce(() => {
+      throw new Error('The managed pairing does not point at its SSH tunnel.')
+    })
+    await expect(state.repairs.repair('env-1', REFUSED)).rejects.toBeInstanceOf(
+      OrcadManagedPairingRepairFailedError
+    )
+  })
+
   it('holds a failure briefly instead of re-reading the host for every reconnect', async () => {
     const state = setup(() => readiness(offer('refused-token')))
-    await expect(state.repairs.repair('env-1')).rejects.toThrow()
-    await expect(state.repairs.repair('env-1')).rejects.toThrow()
+    await expect(state.repairs.repair('env-1', REFUSED)).rejects.toThrow()
+    await expect(state.repairs.repair('env-1', REFUSED)).rejects.toThrow()
     expect(state.deps.readReadiness).toHaveBeenCalledOnce()
     state.advance(PAIRING_REPAIR_FAILURE_HOLD_MS)
-    await expect(state.repairs.repair('env-1')).rejects.toThrow()
+    await expect(state.repairs.repair('env-1', REFUSED)).rejects.toThrow()
     expect(state.deps.readReadiness).toHaveBeenCalledTimes(2)
   })
 
-  it('lets an explicit connect retry past a held failure', async () => {
-    const state = setup(() => readiness(offer('refused-token')))
-    await expect(state.repairs.repair('env-1')).rejects.toThrow()
-    state.repairs.forgetHeldFailure('env-1')
-    await expect(state.repairs.repair('env-1')).rejects.toThrow()
-    expect(state.deps.readReadiness).toHaveBeenCalledTimes(2)
-  })
-
-  it('does not hold a lost SSH connection, which says nothing about the pairing', async () => {
+  it('does not count or hold a lost SSH connection, which says nothing about the pairing', async () => {
     const state = setup(() => readiness(offer('fresh-token')))
-    state.deps.connect.mockRejectedValueOnce(new Error('ssh: connection reset'))
-    await expect(state.repairs.repair('env-1')).rejects.toThrow('connection reset')
-    await expect(state.repairs.repair('env-1')).resolves.toBeDefined()
+    for (let i = 0; i <= MAX_PAIRING_REPAIRS_PER_WINDOW; i++) {
+      state.deps.connect.mockRejectedValueOnce(new Error('ssh: connection reset'))
+      await expect(state.repairs.repair('env-1', REFUSED)).rejects.toThrow('connection reset')
+    }
+    await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBeDefined()
   })
 
-  it('caps repairs per window', async () => {
-    let token = 0
-    const state = setup(() => readiness(offer(`issued-${++token}`)))
+  it('caps attempts per window, failed ones included', async () => {
+    let issued = 0
+    const state = setup(() => readiness(offer(issued++ % 2 ? `issued-${issued}` : 'refused-token')))
     for (let i = 0; i < MAX_PAIRING_REPAIRS_PER_WINDOW; i++) {
-      await state.repairs.repair('env-1')
+      await state.repairs.repair('env-1', state.refuseCurrent()).catch(() => undefined)
+      state.advance(PAIRING_REPAIR_FAILURE_HOLD_MS)
     }
-    await expect(state.repairs.repair('env-1')).rejects.toThrow(/kept refusing/)
-    expect(state.deps.refresh).toHaveBeenCalledTimes(MAX_PAIRING_REPAIRS_PER_WINDOW)
+    const capped = state.repairs.repair('env-1', state.refuseCurrent())
+    await expect(capped).rejects.toBeInstanceOf(OrcadManagedPairingRepairFailedError)
+    await expect(capped).rejects.toThrow(/tried 3 times/)
     state.advance(PAIRING_REPAIR_WINDOW_MS)
-    await expect(state.repairs.repair('env-1')).resolves.toBeDefined()
+    state.deps.readReadiness.mockResolvedValueOnce(readiness(offer('late-token')))
+    await expect(state.repairs.repair('env-1', state.refuseCurrent())).resolves.toBeDefined()
+  })
+
+  it('lets an explicit connect retry past both the held failure and the cap', async () => {
+    const state = setup(() => readiness(offer('refused-token')))
+    for (let i = 0; i < MAX_PAIRING_REPAIRS_PER_WINDOW; i++) {
+      await state.repairs.repair('env-1', REFUSED).catch(() => undefined)
+      state.advance(PAIRING_REPAIR_FAILURE_HOLD_MS)
+    }
+    await expect(state.repairs.repair('env-1', REFUSED)).rejects.toThrow(/tried 3 times/)
+    state.repairs.forgetFailures('env-1')
+    state.deps.readReadiness.mockResolvedValueOnce(readiness(offer('fixed-token')))
+    await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBeDefined()
   })
 })
 
@@ -186,24 +228,20 @@ describe('buildWithPairingRepair', () => {
       recovery: {
         resolve: state.deps.resolve,
         repairs: state.repairs,
-        repaired: vi.fn()
+        ensure: vi.fn<(environment: KnownRuntimeEnvironment) => Promise<void>>()
       }
     }
   }
   const refusal = () => new OrcadManagedPairingRejectedError('rejected the pairing token')
 
-  it('re-pairs once on a refusal from our own server, then builds on the new pairing', async () => {
+  it('re-pairs once on a refusal from our own server, then forwards on the new pairing', async () => {
     const { state, recovery: deps } = recovery()
-    const build = vi
-      .fn<(environment: KnownRuntimeEnvironment) => Promise<void>>()
-      .mockRejectedValueOnce(refusal())
-      .mockResolvedValueOnce(undefined)
+    const build = vi.fn().mockRejectedValueOnce(refusal())
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await expect(buildWithPairingRepair(deps, 'env-1', build)).resolves.toBe('repaired')
     warn.mockRestore()
     expect(state.deps.refresh).toHaveBeenCalledOnce()
-    expect(deps.repaired).toHaveBeenCalledWith('env-1')
-    expect(build.mock.calls[1]?.[0].endpoints[0]).toMatchObject({ deviceToken: 'fresh-1' })
+    expect(deps.ensure.mock.calls[0]?.[0].endpoints[0]).toMatchObject({ deviceToken: 'fresh-1' })
   })
 
   it('never re-pairs on a foreign answer or lost contact', async () => {
@@ -217,13 +255,13 @@ describe('buildWithPairingRepair', () => {
 
   it('fails clearly, without looping, when the new pairing is refused too', async () => {
     const { state, recovery: deps } = recovery()
-    const build = vi.fn().mockRejectedValue(refusal())
+    deps.ensure.mockRejectedValue(refusal())
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const failure = buildWithPairingRepair(deps, 'env-1', build)
+    const failure = buildWithPairingRepair(deps, 'env-1', vi.fn().mockRejectedValue(refusal()))
     await expect(failure).rejects.toBeInstanceOf(OrcadManagedPairingRepairFailedError)
     await expect(failure).rejects.toThrow(/refused the new pairing too/)
     warn.mockRestore()
-    expect(build).toHaveBeenCalledTimes(2)
+    expect(deps.ensure).toHaveBeenCalledOnce()
     expect(state.deps.refresh).toHaveBeenCalledOnce()
   })
 })

@@ -4,24 +4,25 @@
  * foreign server never reaches the repair; it fails the build as a foreign answer instead.
  */
 import type { KnownRuntimeEnvironment } from '../../../shared/runtime-environments'
-import type { ManagedOrcadPairingRepairs } from './orcad-managed-pairing-repair'
+import { pairingRevisionOf, type ManagedOrcadPairingRepairs } from './orcad-managed-pairing-repair'
 import { OrcadManagedPairingRejectedError } from './orcad-managed-tunnel-identity'
 
 export type ManagedOrcadPairingRecovery = {
   resolve: (environmentId: string) => KnownRuntimeEnvironment
   repairs: ManagedOrcadPairingRepairs
-  /** Retires every transport still authenticating with the refused token. */
-  repaired: (environmentId: string) => void | Promise<void>
+  /** Forwards on the new pairing; the refusal already removed the old forward. */
+  ensure: (environment: KnownRuntimeEnvironment) => Promise<void>
 }
 
-/** Builds once; a refused pairing re-pairs over SSH and builds once more on the new one. */
+/** Builds once; a refused pairing re-pairs over SSH and forwards once more on the new one. */
 export async function buildWithPairingRepair(
   recovery: ManagedOrcadPairingRecovery,
   environmentId: string,
   build: (environment: KnownRuntimeEnvironment) => Promise<void>
 ): Promise<'built' | 'repaired'> {
+  const refused = recovery.resolve(environmentId)
   try {
-    await build(recovery.resolve(environmentId))
+    await build(refused)
     return 'built'
   } catch (error) {
     if (!(error instanceof OrcadManagedPairingRejectedError)) {
@@ -29,15 +30,14 @@ export async function buildWithPairingRepair(
     }
     console.warn('[ssh] The managed Orca server refused this desktop; pairing again:', error)
   }
-  const repaired = await recovery.repairs.repair(environmentId)
-  // Why before the rebuild: a failed rebuild still leaves no transport on the refused token.
-  await recovery.repaired(environmentId)
+  // Why the refused revision: a repair another caller already landed is joined, not redone.
+  const repaired = await recovery.repairs.repair(environmentId, pairingRevisionOf(refused))
   try {
-    await build(repaired)
-    return 'repaired'
+    await recovery.ensure(repaired)
   } catch (error) {
     throw error instanceof OrcadManagedPairingRejectedError
       ? recovery.repairs.recordRefusedAfterRepair(environmentId)
       : error
   }
+  return 'repaired'
 }

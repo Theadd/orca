@@ -38,9 +38,13 @@ export function handleManagedSharedControlRefusal(
     (error: unknown) => {
       if (error instanceof OrcadManagedPairingRepairFailedError) {
         // Why stop: the verdict stands until the user connects again.
-        getRuntimeEnvironmentStatusOwner(userDataPath, environmentId).authenticationRejected(
-          error.message
-        )
+        try {
+          getRuntimeEnvironmentStatusOwner(userDataPath, environmentId).authenticationRejected(
+            error.message
+          )
+        } catch {
+          // Removed while it re-paired: nothing is left to report on.
+        }
         return 'stop'
       }
       // Lost contact or a foreign answer is not a verdict on the pairing.
