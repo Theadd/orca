@@ -17,6 +17,7 @@ vi.mock('lucide-react-native', () => ({
   PanelLeftClose: 'Icon',
   Plus: 'Icon',
   Search: 'Icon',
+  Server: 'Icon',
   SlidersHorizontal: 'Icon',
   SquareTerminal: 'Icon',
   UserCircle: 'Icon',

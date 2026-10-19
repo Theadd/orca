@@ -1,0 +1,73 @@
+import { machineMsUntilExpiry } from '../../../src/shared/machine-inventory'
+import { colors } from '../theme/mobile-theme'
+import type { MobileMachine } from './machine-operations'
+
+const DAY_MS = 24 * 60 * 60_000
+
+export type MachineRowModel = {
+  stateLabel: string
+  stateColor: string
+  subtitle: string
+  action: 'wake' | 'sleep' | null
+}
+
+const STATE_LABELS: Record<string, { label: string; color: string }> = {
+  running: { label: 'Running', color: colors.statusGreen },
+  sleeping: { label: 'Sleeping', color: colors.textMuted },
+  archived: { label: 'Archived', color: colors.textMuted },
+  creating: { label: 'Starting', color: colors.statusAmber },
+  waking: { label: 'Waking', color: colors.statusAmber },
+  unreachable: { label: 'Unreachable', color: colors.statusRed },
+  gone: { label: 'Gone', color: colors.statusRed },
+  error: { label: 'Error', color: colors.statusRed }
+}
+
+function expiryLabel(
+  machine: MobileMachine,
+  clockOffsetMs: number | undefined,
+  now: number
+): string | null {
+  if (machine.lifetime !== 'temporary') {
+    return null
+  }
+  const remaining = machineMsUntilExpiry(machine, clockOffsetMs, now)
+  if (remaining === null || Number.isNaN(remaining)) {
+    return null
+  }
+  if (remaining <= 0) {
+    return 'expired'
+  }
+  const expiry = new Date(now + remaining)
+  // A time alone reads as today; past a day out, name the date too.
+  const label =
+    remaining < DAY_MS
+      ? expiry.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : expiry.toLocaleString([], {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        })
+  return `deletes at ${label}`
+}
+
+export function machineRowModel(
+  machine: MobileMachine,
+  clockOffsetMs: number | undefined,
+  now: number
+): MachineRowModel {
+  const state = STATE_LABELS[machine.state] ?? { label: 'Unknown', color: colors.textMuted }
+  const lifetime = machine.lifetime === 'temporary' ? 'Temporary' : 'Persistent'
+  const expiry = expiryLabel(machine, clockOffsetMs, now)
+  return {
+    stateLabel: state.label,
+    stateColor: state.color,
+    subtitle: [lifetime, expiry, machine.detail].filter(Boolean).join(' · '),
+    action:
+      machine.state === 'running'
+        ? 'sleep'
+        : machine.state === 'sleeping' || machine.state === 'archived'
+          ? 'wake'
+          : null
+  }
+}
