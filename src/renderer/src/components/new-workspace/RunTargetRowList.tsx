@@ -7,6 +7,8 @@ import { HostRowIcon, RunTargetRow } from './RunTargetComboboxRow'
 import { ConnectHostButton, NeedsSetupHostIcon, SetLocationButton } from './RunTargetRowActions'
 import { RecipesSubmenuRow } from './RunTargetSubmenus'
 import type { EphemeralVmRecipeOption, RunTargetRowModel } from './run-target-options'
+import type { MachineRowModel } from './run-target-machine-rows'
+import { RunTargetMachineGroupHeader, RunTargetMachineRow } from './RunTargetMachineRow'
 
 /** The scrolling rows of the run-target picker; "Add host" is pinned outside this list. */
 export default function RunTargetRowList({
@@ -25,7 +27,10 @@ export default function RunTargetRowList({
   onSelectHost,
   onSelectRecipe,
   onConnectHost,
-  onSetLocation
+  onSetLocation,
+  selectedMachineRowKey,
+  now,
+  onActivateMachineRow
 }: {
   rows: readonly RunTargetRowModel[]
   armedKey: string | null
@@ -45,12 +50,20 @@ export default function RunTargetRowList({
   onSelectRecipe: (recipeId: string) => void
   onConnectHost: (option: NeedsSetupProjectHostOption) => void
   onSetLocation: (option: NeedsSetupProjectHostOption) => void
+  /** Row key of the committed machine, if a machine holds the selection. */
+  selectedMachineRowKey: string | null
+  /** Clock for relative copy such as "seen 4m ago". */
+  now: number
+  onActivateMachineRow: (row: MachineRowModel) => void
 }): React.JSX.Element {
   return (
     <>
       {rows.map((row) => {
         if (row.kind === 'add-host') {
           return null
+        }
+        if (row.kind === 'machine-group') {
+          return <RunTargetMachineGroupHeader key={row.key} group={row.group} now={now} />
         }
         const isArmed = armedKey === row.key
         const optionId = isArmed ? `${listId}-armed` : undefined
@@ -109,18 +122,30 @@ export default function RunTargetRowList({
             />
           )
         }
-        // Recipes submenu row.
+        if (row.kind === 'recipes') {
+          return (
+            <RecipesSubmenuRow
+              key={row.key}
+              open={recipesOpen}
+              onOpenChange={onRecipesOpenChange}
+              armed={isArmed}
+              optionId={optionId}
+              recipes={matchedRecipes}
+              selectedRecipeId={selectedRecipeId}
+              onArm={() => onArm(row.key, 'recipes')}
+              onSelectRecipe={onSelectRecipe}
+            />
+          )
+        }
         return (
-          <RecipesSubmenuRow
+          <RunTargetMachineRow
             key={row.key}
-            open={recipesOpen}
-            onOpenChange={onRecipesOpenChange}
+            row={row}
             armed={isArmed}
+            current={row.key === selectedMachineRowKey}
             optionId={optionId}
-            recipes={matchedRecipes}
-            selectedRecipeId={selectedRecipeId}
-            onArm={() => onArm(row.key, 'recipes')}
-            onSelectRecipe={onSelectRecipe}
+            onArm={() => onArm(row.key, null)}
+            onCommit={() => onActivateMachineRow(row)}
           />
         )
       })}

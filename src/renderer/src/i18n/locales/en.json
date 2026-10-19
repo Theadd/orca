@@ -1264,7 +1264,32 @@
         "settingUpWorkspace": "Setting up your workspace…",
         "preparingWorkspace": "Preparing workspace…",
         "creatingWorktree": "Creating worktree…",
-        "fetchingBaseBranch": "Fetching base branch…"
+        "fetchingBaseBranch": "Fetching base branch…",
+        "startingMachine": "Starting machine…"
+      },
+      "machineWorktreeCreation": {
+        "machineGone": "This machine is gone.",
+        "noProjectRoot": "The provider did not say where projects live on this machine.",
+        "noCloneUrl": "This project has no remote to clone onto the machine.",
+        "cloneFailed": "Couldn’t set up the project on the machine."
+      },
+      "machines": {
+        "machineCopy": {
+          "deletesAt": "Deletes {{time}}",
+          "cantReach": "Can’t reach",
+          "cantReachSeen": "Can’t reach · seen {{ago}} ago"
+        },
+        "machineDisplayState": {
+          "starting": "Starting",
+          "running": "Running",
+          "sleeping": "Sleeping",
+          "archived": "Archived",
+          "unreachable": "Unreachable",
+          "gone": "Gone"
+        },
+        "machineWakeOnOpen": {
+          "wakeFailed": "Couldn’t wake {{name}}"
+        }
       }
     },
     "hooks": {
@@ -1990,7 +2015,9 @@
         "addSshHostHint": "Use an existing machine over SSH",
         "addRemoteOrcaServer": "Add Remote Orca Server",
         "addRemoteOrcaServerHint": "Pair another Orca runtime",
-        "hostConnectionFailed": "Connection failed"
+        "hostConnectionFailed": "Connection failed",
+        "machineFromPlugin": "Machine from a plugin…",
+        "machineFromPluginHint": "Find a machine provider plugin"
       },
       "NewWorkspaceComposerModal": {
         "createWorktree": "Create worktree",
@@ -14794,6 +14821,17 @@
             "listLabel": "Run targets",
             "label": "Run on",
             "browse": "Browse run targets"
+          },
+          "RunTargetMachineRow": {
+            "differentAccount": "Signed in as a different account",
+            "invalidResponse": "Sent an invalid response",
+            "showFewer": "Show fewer",
+            "showAll": "Show all ({{count}})",
+            "archived": "Archived ({{count}})",
+            "newMachine": "New machine on {{provider}}…",
+            "signIn": "Sign in to {{provider}}",
+            "retry": "Retry {{provider}}",
+            "showDetails": "Show details"
           }
         }
       },

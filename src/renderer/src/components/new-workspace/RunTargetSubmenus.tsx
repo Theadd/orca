@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChevronDown, Cloud, Plus, Server } from 'lucide-react'
+import { Box, ChevronDown, Cloud, Plus, Server } from 'lucide-react'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
@@ -99,7 +99,8 @@ export function AddHostSubmenuRow({
   optionId,
   onArm,
   onAddSshHost,
-  onAddRemoteServer
+  onAddRemoteServer,
+  onBrowseMachinePlugins
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -108,6 +109,8 @@ export function AddHostSubmenuRow({
   onArm: () => void
   onAddSshHost?: () => void
   onAddRemoteServer?: () => void
+  /** The one entry point to machine providers, so a first-time user can find them. */
+  onBrowseMachinePlugins?: () => void
 }): React.JSX.Element {
   const [hoveredKey, setHoveredKey] = React.useState<string | null>(null)
   const addHostLabel = translate('auto.components.NewWorkspaceComposerCard.addHost', 'Add host')
@@ -181,6 +184,25 @@ export function AddHostSubmenuRow({
               optionId={undefined}
               onArm={() => setHoveredKey('remote')}
               onCommit={onAddRemoteServer}
+            />
+          ) : null}
+          {onBrowseMachinePlugins ? (
+            <RunTargetRow
+              icon={<Box className="size-3.5 shrink-0 text-muted-foreground" />}
+              label={translate(
+                'auto.components.NewWorkspaceComposerCard.machineFromPlugin',
+                'Machine from a plugin…'
+              )}
+              detail={translate(
+                'auto.components.NewWorkspaceComposerCard.machineFromPluginHint',
+                'Find a machine provider plugin'
+              )}
+              armed={hoveredKey === 'machine-plugin'}
+              current={false}
+              stacked
+              optionId={undefined}
+              onArm={() => setHoveredKey('machine-plugin')}
+              onCommit={onBrowseMachinePlugins}
             />
           ) : null}
         </div>

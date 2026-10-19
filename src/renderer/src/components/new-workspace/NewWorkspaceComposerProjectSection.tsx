@@ -5,6 +5,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import ProjectCombobox from '@/components/new-workspace/ProjectCombobox'
 import RunTargetCombobox from '@/components/new-workspace/RunTargetCombobox'
 import { translate } from '@/i18n/i18n'
+import {
+  openMachinePluginSettings,
+  runMachineProviderRowAction
+} from '@/lib/machines/machine-provider-actions'
 import type {
   EphemeralVmRecipeOption,
   NeedsProjectHostOption,
@@ -31,6 +35,7 @@ type NewWorkspaceComposerProjectSectionProps = Pick<
   | 'onEphemeralVmRecipeChange'
   | 'selectedEphemeralVmRecipeId'
   | 'ephemeralVmRecipeError'
+  | 'machineSelection'
 > & {
   disabled?: boolean
   projectDescriptionId: string
@@ -75,6 +80,7 @@ export function NewWorkspaceComposerProjectSection({
   handleConnectRunTargetHost,
   handleSetLocation,
   ephemeralVmRecipeError,
+  machineSelection = null,
   selectedRepoRequiresConnection,
   selectedRepoConnectionId,
   selectedRepoConnectInProgress,
@@ -161,6 +167,26 @@ export function NewWorkspaceComposerProjectSection({
             onAddRemoteServer={handleAddRemoteServer}
             onConnectHost={handleConnectRunTargetHost}
             onSetLocation={handleSetLocation}
+            machines={
+              machineSelection
+                ? {
+                    groups: machineSelection.groups,
+                    value: machineSelection.value,
+                    onChange: (machine) =>
+                      machineSelection.setValue(
+                        machine
+                          ? { providerKey: machine.providerKey, machineId: machine.machineId }
+                          : null
+                      ),
+                    onProviderAction: ({ kind, group }) => {
+                      if (kind !== 'create') {
+                        runMachineProviderRowAction(kind, group.providerKey)
+                      }
+                    }
+                  }
+                : undefined
+            }
+            onBrowseMachinePlugins={machineSelection ? openMachinePluginSettings : undefined}
           />
           {ephemeralVmRecipeError ? (
             <p className="whitespace-pre-line text-[11px] text-destructive">

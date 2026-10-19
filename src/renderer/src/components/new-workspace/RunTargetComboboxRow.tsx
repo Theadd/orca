@@ -25,6 +25,7 @@ export function RunTargetRow({
   stacked = false,
   onArm,
   onCommit,
+  status,
   trailing
 }: {
   icon: React.ReactNode
@@ -41,6 +42,8 @@ export function RunTargetRow({
   stacked?: boolean
   onArm: () => void
   onCommit: () => void
+  /** Right of the detail, centered on the row: a state that is not text on the baseline. */
+  status?: React.ReactNode
   trailing?: React.ReactNode
 }): React.JSX.Element {
   return (
@@ -98,6 +101,7 @@ export function RunTargetRow({
           />
         </>
       )}
+      {status ? <span className="flex h-8 shrink-0 items-center pl-2.5">{status}</span> : null}
       {trailing}
       {submenu ? (
         <span className={cn('flex shrink-0 items-center pl-1.5', stacked ? 'self-center' : 'h-8')}>

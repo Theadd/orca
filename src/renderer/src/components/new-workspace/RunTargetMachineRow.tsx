@@ -1,0 +1,182 @@
+import React from 'react'
+import {
+  Archive,
+  Box,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Info,
+  LogIn,
+  Plus,
+  RefreshCw
+} from 'lucide-react'
+import { translate } from '@/i18n/i18n'
+import { MachineStateLabel } from '@/components/machines/MachineStateLabel'
+import { formatMachineExpiry, formatProviderUnreachable } from '@/lib/machines/machine-copy'
+import type { MachineGroupOption } from '@/lib/machines/machine-group-options'
+import { RunTargetRow } from './RunTargetComboboxRow'
+import type { MachineRowModel } from './run-target-machine-rows'
+
+const ICON = 'size-3.5 shrink-0 text-muted-foreground'
+
+function groupAside(group: MachineGroupOption, now: number): string | null {
+  switch (group.status.kind) {
+    case 'unreachable':
+      return formatProviderUnreachable(group.status.lastSeenAt, now)
+    case 'different-account':
+      return translate(
+        'auto.components.new.workspace.RunTargetMachineRow.differentAccount',
+        'Signed in as a different account'
+      )
+    case 'invalid-response':
+      return translate(
+        'auto.components.new.workspace.RunTargetMachineRow.invalidResponse',
+        'Sent an invalid response'
+      )
+    case 'ready':
+    case 'sign-in':
+      return null
+  }
+}
+
+/** A provider's label inside the run-target list; labels a group, never armed. */
+export function RunTargetMachineGroupHeader({
+  group,
+  now
+}: {
+  group: MachineGroupOption
+  now: number
+}): React.JSX.Element {
+  const aside = groupAside(group, now)
+  return (
+    <div
+      role="presentation"
+      className="flex items-baseline gap-2 px-2 pb-1 pt-2.5 text-2xs font-medium text-muted-foreground"
+    >
+      <span className="truncate">{group.name}</span>
+      {aside ? <span className="ml-auto shrink-0 truncate font-normal">{aside}</span> : null}
+    </div>
+  )
+}
+
+function rowContent(row: Exclude<MachineRowModel, { kind: 'machine-group' }>): {
+  icon: React.ReactNode
+  label: string
+  detail: string
+  status?: React.ReactNode
+  dimmed?: boolean
+} {
+  const provider = row.group.name
+  switch (row.kind) {
+    case 'machine': {
+      const { machine } = row
+      const archived = machine.state === 'archived'
+      return {
+        icon: archived ? <Archive className={ICON} /> : <Box className={ICON} />,
+        label: machine.name,
+        detail:
+          machine.lifetime === 'temporary' && machine.expiresAt !== null
+            ? formatMachineExpiry(machine.expiresAt)
+            : '',
+        status: <MachineStateLabel state={machine.state} />,
+        dimmed: archived || machine.state === 'unreachable'
+      }
+    }
+    case 'machine-more':
+      return {
+        icon: row.expanded ? <ChevronUp className={ICON} /> : <ChevronDown className={ICON} />,
+        label: row.expanded
+          ? translate('auto.components.new.workspace.RunTargetMachineRow.showFewer', 'Show fewer')
+          : translate(
+              'auto.components.new.workspace.RunTargetMachineRow.showAll',
+              'Show all ({{count}})',
+              { count: row.group.machines.length + row.group.archived.length }
+            ),
+        detail: '',
+        dimmed: true
+      }
+    case 'machine-archived':
+      return {
+        icon: row.open ? <ChevronDown className={ICON} /> : <ChevronRight className={ICON} />,
+        label: translate(
+          'auto.components.new.workspace.RunTargetMachineRow.archived',
+          'Archived ({{count}})',
+          { count: row.group.archived.length }
+        ),
+        detail: '',
+        dimmed: true
+      }
+    case 'machine-create':
+      return {
+        icon: <Plus className={ICON} />,
+        label: translate(
+          'auto.components.new.workspace.RunTargetMachineRow.newMachine',
+          'New machine on {{provider}}…',
+          { provider }
+        ),
+        detail: ''
+      }
+    case 'machine-sign-in':
+      return {
+        icon: <LogIn className={ICON} />,
+        label: translate(
+          'auto.components.new.workspace.RunTargetMachineRow.signIn',
+          'Sign in to {{provider}}',
+          { provider }
+        ),
+        detail: ''
+      }
+    case 'machine-retry':
+      return {
+        icon: <RefreshCw className={ICON} />,
+        label: translate(
+          'auto.components.new.workspace.RunTargetMachineRow.retry',
+          'Retry {{provider}}',
+          { provider }
+        ),
+        detail: ''
+      }
+    case 'machine-details':
+      return {
+        icon: <Info className={ICON} />,
+        label: translate(
+          'auto.components.new.workspace.RunTargetMachineRow.showDetails',
+          'Show details'
+        ),
+        detail: ''
+      }
+  }
+}
+
+/** Every armable machine row: a machine, or the one action a provider group offers. */
+export function RunTargetMachineRow({
+  row,
+  armed,
+  current,
+  optionId,
+  onArm,
+  onCommit
+}: {
+  row: Exclude<MachineRowModel, { kind: 'machine-group' }>
+  armed: boolean
+  current: boolean
+  optionId: string | undefined
+  onArm: () => void
+  onCommit: () => void
+}): React.JSX.Element {
+  const content = rowContent(row)
+  return (
+    <RunTargetRow
+      icon={content.icon}
+      label={content.label}
+      detail={content.detail}
+      status={content.status}
+      dimmed={content.dimmed}
+      armed={armed}
+      current={current}
+      optionId={optionId}
+      onArm={onArm}
+      onCommit={onCommit}
+    />
+  )
+}
