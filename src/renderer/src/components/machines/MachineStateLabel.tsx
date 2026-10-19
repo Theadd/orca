@@ -5,17 +5,37 @@ import {
   type MachineDisplayState
 } from '@/lib/machines/machine-display-state'
 
-/** A machine's state dot; color only carries state, so every other surface stays monochrome. */
-export function MachineStateDot({ state }: { state: MachineDisplayState }): React.JSX.Element {
+/**
+ * A machine's state dot; color only carries state, so every other surface stays monochrome.
+ * Alone it also names the state for screen readers; beside a visible word it stays silent.
+ */
+export function MachineStateDot({
+  state,
+  announce = true
+}: {
+  state: MachineDisplayState
+  announce?: boolean
+}): React.JSX.Element {
+  const word = announce ? (
+    <span className="sr-only">{getMachineDisplayStateLabel(state)}</span>
+  ) : null
   if (state === 'starting') {
-    return <LoadingSpinner className="size-3 shrink-0 self-center text-muted-foreground" />
+    return (
+      <>
+        <LoadingSpinner className="size-3 shrink-0 self-center text-muted-foreground" />
+        {word}
+      </>
+    )
   }
   return (
-    <span
-      aria-hidden="true"
-      data-state={state}
-      className="size-1.5 shrink-0 self-center rounded-full data-[state=archived]:hidden data-[state=gone]:bg-destructive data-[state=running]:bg-status-success data-[state=sleeping]:ring-1 data-[state=sleeping]:ring-inset data-[state=sleeping]:ring-muted-foreground data-[state=unreachable]:bg-status-warning"
-    />
+    <>
+      <span
+        aria-hidden="true"
+        data-state={state}
+        className="size-1.5 shrink-0 self-center rounded-full data-[state=archived]:hidden data-[state=gone]:bg-destructive data-[state=running]:bg-status-success data-[state=sleeping]:ring-1 data-[state=sleeping]:ring-inset data-[state=sleeping]:ring-muted-foreground data-[state=unreachable]:bg-status-warning"
+      />
+      {word}
+    </>
   )
 }
 
@@ -26,7 +46,7 @@ export function MachineStateLabel({ state }: { state: MachineDisplayState }): Re
       data-state={state}
       className="inline-flex shrink-0 items-baseline gap-1.5 text-xs text-muted-foreground data-[state=gone]:text-destructive"
     >
-      <MachineStateDot state={state} />
+      <MachineStateDot state={state} announce={false} />
       {getMachineDisplayStateLabel(state)}
     </span>
   )

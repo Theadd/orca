@@ -14,8 +14,20 @@ export type RuntimeServerStatusIndicator = {
 
 export function getRuntimeServerStatusIndicator(
   connectionState: RuntimeServerConnectionState,
-  accessRevoked: boolean
+  accessRevoked: boolean,
+  retired = false
 ): RuntimeServerStatusIndicator {
+  // Why: a retired server ran on a machine that was deleted; it is gone, not reconnectable.
+  if (retired) {
+    return {
+      label: translate(
+        'auto.components.settings.RuntimeEnvironmentsPane.serverMachineDeleted',
+        'Machine deleted'
+      ),
+      labelClassName: 'text-muted-foreground',
+      dotClassName: 'bg-muted-foreground/50'
+    }
+  }
   // Why: the host answered and refused our token, so "Disconnected" would misstate a reachable host.
   if (accessRevoked) {
     return {

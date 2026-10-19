@@ -1,5 +1,10 @@
 import type { StateCreator } from 'zustand'
-import type { MachineProviderSnapshot } from '../../../../shared/machine-inventory'
+import type {
+  MachineExpiryWarning,
+  MachineProviderSnapshot,
+  MachineTarget
+} from '../../../../shared/machine-inventory'
+import { machineTargetKey } from '@/lib/machines/machine-host-match'
 import type { MachineChoice } from '@/lib/machines/machine-group-options'
 import type { MachineCreateDraft } from '@/lib/machines/machine-create-draft'
 import type { AppState } from '../types'
@@ -14,11 +19,20 @@ export type MachinesSlice = {
   setWorktreeMachineWaking: (worktreeId: string, machineName: string | null) => void
   /** The machine a composer had chosen when sign-in closed it; read once when it reopens. */
   composerMachineRestore: MachineChoice | null
+  setComposerMachineRestore: (choice: MachineChoice | null) => void
   /** The new-machine draft a composer had when sign-in closed it; read once when it reopens. */
   composerDraftRestore: MachineCreateDraft | null
   setComposerDraftRestore: (draft: MachineCreateDraft | null) => void
-  setComposerMachineRestore: (choice: MachineChoice | null) => void
+  /** The machine whose Delete dialog is open; one dialog host serves every menu. */
+  machineDeleteTarget: MachineTarget | null
+  /** Whether the sidebar's "Archived machines (n)" row is open; closed by default. */
+  archivedMachinesExpanded: boolean
+  setArchivedMachinesExpanded: (expanded: boolean) => void
+  setMachineDeleteTarget: (target: MachineTarget | null) => void
   applyMachineSnapshot: (snapshot: MachineProviderSnapshot) => void
+  /** Main's 15-minute warnings, keyed by `machineTargetKey`; the latest per machine wins. */
+  machineExpiryWarnings: Readonly<Record<string, MachineExpiryWarning>>
+  applyMachineExpiryWarning: (warning: MachineExpiryWarning) => void
   setMachineEnvironmentSnapshots: (
     environmentId: string,
     snapshots: readonly MachineProviderSnapshot[]
@@ -63,6 +77,10 @@ export const createMachinesSlice: StateCreator<AppState, [], [], MachinesSlice> 
   composerDraftRestore: null,
   setComposerDraftRestore: (composerDraftRestore) => set({ composerDraftRestore }),
   setComposerMachineRestore: (composerMachineRestore) => set({ composerMachineRestore }),
+  machineDeleteTarget: null,
+  archivedMachinesExpanded: false,
+  setArchivedMachinesExpanded: (archivedMachinesExpanded) => set({ archivedMachinesExpanded }),
+  setMachineDeleteTarget: (machineDeleteTarget) => set({ machineDeleteTarget }),
   applyMachineSnapshot: (snapshot) =>
     set((state) =>
       isNewer(snapshot, state.machineProviders[snapshot.providerKey]) &&
@@ -70,6 +88,14 @@ export const createMachinesSlice: StateCreator<AppState, [], [], MachinesSlice> 
         ? { machineProviders: { ...state.machineProviders, [snapshot.providerKey]: snapshot } }
         : {}
     ),
+  machineExpiryWarnings: {},
+  applyMachineExpiryWarning: (warning) =>
+    set((state) => ({
+      machineExpiryWarnings: {
+        ...state.machineExpiryWarnings,
+        [machineTargetKey(warning)]: warning
+      }
+    })),
   setMachineEnvironmentSnapshots: (environmentId, snapshots) =>
     set((state) => {
       const held = state.machineEnvironmentProviders[environmentId]

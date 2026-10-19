@@ -7,6 +7,7 @@ import { ClaudeDiffPanelNoticeBanner } from './ClaudeDiffPanelNoticeBanner'
 import { NewerDaemonHoldBanner } from './NewerDaemonHoldBanner'
 import { TerminalSshReconnectOverlay } from './TerminalSshReconnectOverlay'
 import { useAppStore } from '@/store'
+import { useWorktreeStoppedMachine } from '@/components/machines/use-worktree-machine'
 import { useWslHostUnavailableReason } from './use-wsl-host-unavailable-reason'
 import { DelayedRemoteRuntimeReconnectBanner } from './TerminalRemoteRuntimeReconnectBanner'
 import { TerminalProcessExitOverlay } from './TerminalProcessExitOverlay'
@@ -174,6 +175,7 @@ export function TerminalPaneRecoveryPortals({
   const wakingMachineName = useAppStore(
     (state) => state.wakingMachineByWorktreeId[controller.worktreeId] ?? null
   )
+  const stoppedMachine = useWorktreeStoppedMachine(controller.worktreeId)
   if (showSshReconnectOverlay) {
     return null
   }
@@ -193,6 +195,7 @@ export function TerminalPaneRecoveryPortals({
             onReconnect={() => paneTransportsRef.current.get(pane.id)?.retryRecovery?.()}
             wslHostUnavailable={wslHostUnavailable}
             wakingMachineName={wakingMachineName}
+            stoppedMachine={stoppedMachine}
           />,
           pane.container,
           `remote-runtime-reconnect-${pane.id}`

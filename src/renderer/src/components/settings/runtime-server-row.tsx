@@ -124,7 +124,8 @@ export function RuntimeServerRow({
     platform: descriptorStatus?.hostPlatform
   })
   const hostDescriptorText = hostDisplay.descriptorLine
-  const statusIndicator = getRuntimeServerStatusIndicator(connectionState, accessRevoked)
+  const retired = Boolean(environment.retiredAt)
+  const statusIndicator = getRuntimeServerStatusIndicator(connectionState, accessRevoked, retired)
   const versionFooter = remoteUpdate
     ? getRuntimeServerVersionFooter(remoteUpdate, {
         accessRevoked,
@@ -147,7 +148,7 @@ export function RuntimeServerRow({
           ? null
           : getHostDetailsSummary(effectiveDetails)
   // Why: the revoked host rejects this token on every Connect; Re-pair is the only way back.
-  const showConnect = !(accessRevoked && repairable)
+  const showConnect = !retired && !(accessRevoked && repairable)
 
   return (
     <div data-settings-section={environment.id} className="flex items-center gap-3 px-4 py-3">

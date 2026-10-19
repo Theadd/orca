@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MachineProviderSnapshot } from '../../../shared/machine-inventory'
+import type {
+  MachineExpiryWarning,
+  MachineProviderSnapshot
+} from '../../../shared/machine-inventory'
 
 const mocks = vi.hoisted(() => ({ callRuntimeRpc: vi.fn() }))
 
@@ -20,6 +23,18 @@ function snapshot(listedAt: number): MachineProviderSnapshot {
     machines: [],
     pendingCreates: [],
     listedAt
+  }
+}
+
+const WARNING_KEY = 'plugin:p/omarchy\0m'
+
+function warning(expiresAt: number): MachineExpiryWarning {
+  return {
+    providerKey: 'plugin:p/omarchy',
+    machineId: 'm',
+    name: 'box',
+    expiresAt,
+    workAtRisk: null
   }
 }
 
@@ -69,6 +84,7 @@ describe('loadEnvironmentMachines', () => {
 describe('ensureMachinesLoaded', () => {
   it('keeps a newer push over a late load, and retries a failed load', async () => {
     let pushChange: (next: MachineProviderSnapshot) => void = () => {}
+    let pushWarning: (next: MachineExpiryWarning) => void = () => {}
     const snapshots = vi
       .fn()
       .mockRejectedValueOnce(new Error('ipc'))
@@ -79,7 +95,11 @@ describe('ensureMachinesLoaded', () => {
           snapshots,
           onChanged: (callback: (next: MachineProviderSnapshot) => void) => {
             pushChange = callback
-          }
+          },
+          onExpiryWarning: (callback: (next: MachineExpiryWarning) => void) => {
+            pushWarning = callback
+          },
+          expiryWarnings: vi.fn().mockResolvedValue({ ok: true, value: [warning(1)] })
         }
       }
     })
@@ -93,6 +113,10 @@ describe('ensureMachinesLoaded', () => {
     await Promise.resolve()
 
     expect(useAppStore.getState().machineProviders['plugin:p/omarchy']?.listedAt).toBe(2)
+    // Main's expiry warnings: those raised before a reload, then live ones, latest per machine.
+    expect(useAppStore.getState().machineExpiryWarnings[WARNING_KEY]?.expiresAt).toBe(1)
+    pushWarning(warning(2))
+    expect(useAppStore.getState().machineExpiryWarnings[WARNING_KEY]?.expiresAt).toBe(2)
     vi.unstubAllGlobals()
   })
 })

@@ -8,6 +8,7 @@ import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-result'
 import { installWindowVisibilityInterval } from '@/lib/window-visibility-interval'
 import {
   findMachineForHost,
+  getArchivedMachineHostIds,
   type MachineMatch,
   type MachineSources
 } from '@/lib/machines/machine-host-match'
@@ -42,6 +43,18 @@ export function ensureMachinesLoaded(): void {
   if (!subscribed) {
     subscribed = true
     machinesApi.onChanged((snapshot) => useAppStore.getState().applyMachineSnapshot(snapshot))
+    machinesApi.onExpiryWarning((warning) =>
+      useAppStore.getState().applyMachineExpiryWarning(warning)
+    )
+    // Why: a reloaded window still shows warnings main raised before it.
+    void machinesApi.expiryWarnings().then(
+      (result) => {
+        for (const warning of result.ok ? result.value : []) {
+          useAppStore.getState().applyMachineExpiryWarning(warning)
+        }
+      },
+      () => {}
+    )
   }
   if (loadState !== 'idle') {
     return
@@ -214,8 +227,48 @@ export function getMachineSources(): MachineSources {
   )
 }
 
-/** The machine a host runs on, or null for every other host. */
+const matchCache = new Map<string, { signature: string; match: MachineMatch }>()
+
+/** The same match object while a host's machine is unchanged, so its readers skip re-rendering. */
+function stableMatchForHost(
+  hostKey: string | null | undefined,
+  sources: MachineSources
+): MachineMatch | null {
+  const match = findMachineForHost(hostKey, sources)
+  if (!hostKey || !match) {
+    return null
+  }
+  const signature = JSON.stringify([
+    match.environmentId,
+    match.snapshot.providerKey,
+    match.snapshot.name,
+    match.snapshot.clockOffsetMs,
+    match.snapshot.capabilities,
+    match.machine
+  ])
+  const held = matchCache.get(hostKey)
+  if (held?.signature === signature) {
+    return held.match
+  }
+  matchCache.set(hostKey, { signature, match })
+  return match
+}
+
+/** The machine a host runs on, or null for every other host; re-renders only when it changes. */
 export function useMachineForHost(hostKey: string | null | undefined): MachineMatch | null {
+  return useAppStore((state) =>
+    stableMatchForHost(
+      hostKey,
+      selectMachineSources(
+        machineSlice(state).machineProviders,
+        machineSlice(state).machineEnvironmentProviders
+      )
+    )
+  )
+}
+
+/** Hosts the sidebar folds under "Archived machines (n)". */
+export function useArchivedMachineHostIds(): ReadonlySet<string> {
   const sources = useMachineSources()
-  return useMemo(() => findMachineForHost(hostKey, sources), [hostKey, sources])
+  return useMemo(() => getArchivedMachineHostIds(sources.self), [sources])
 }

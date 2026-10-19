@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button'
 import { translate } from '@/i18n/i18n'
 import { openWslHostsExperimentalSetting } from '../sidebar/use-wsl-hosts-enabled'
 import { getWslHostsTurnedOffLabel, getWslHostsTurnOnLabel } from '../sidebar/wsl-host-row-status'
+import type { MachineMatch } from '@/lib/machines/machine-host-match'
+import { runMachineMenuAction } from '@/lib/machines/machine-actions'
+import { getStoppedMachineTitle } from '@/lib/machines/machine-copy'
 
 type FileExplorerTreeStatusProps = {
   isLoading: boolean
@@ -13,6 +16,8 @@ type FileExplorerTreeStatusProps = {
   emptyMessage?: string
   /** The workspace's WSL host is turned off: offer the switch instead of a read error. */
   wslHostsTurnedOff?: boolean
+  /** The workspace's machine sleeps, is archived or is gone: say why instead of a read error. */
+  stoppedMachine?: MachineMatch | null
 }
 
 /** Treats even an empty error message as a failed read, keeping unreadable directories distinct from empty ones. */
@@ -22,7 +27,8 @@ export function FileExplorerTreeStatus({
   isEmpty,
   emptyMessage,
   scopedToFolder = false,
-  wslHostsTurnedOff = false
+  wslHostsTurnedOff = false,
+  stoppedMachine = null
 }: FileExplorerTreeStatusProps): React.JSX.Element | null {
   if (isLoading) {
     return (
@@ -42,6 +48,22 @@ export function FileExplorerTreeStatus({
         <Button size="xs" onClick={openWslHostsExperimentalSetting}>
           {getWslHostsTurnOnLabel()}
         </Button>
+      </div>
+    )
+  }
+
+  if (error !== null && stoppedMachine) {
+    return (
+      <div
+        className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[11px] text-muted-foreground"
+        data-file-explorer-stopped-machine={stoppedMachine.machine.state}
+      >
+        <span>{getStoppedMachineTitle(stoppedMachine)}</span>
+        {stoppedMachine.machine.state === 'gone' ? null : (
+          <Button size="xs" onClick={() => void runMachineMenuAction('wake', stoppedMachine)}>
+            {translate('auto.components.machines.StoppedMachineBanner.wake', 'Wake machine')}
+          </Button>
+        )}
       </div>
     )
   }

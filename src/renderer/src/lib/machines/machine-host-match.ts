@@ -4,6 +4,15 @@ import type {
   MachineTarget
 } from '../../../../shared/machine-inventory'
 import { parseHostAuthorityKey } from '../../../../shared/host-authority'
+import {
+  getWorktreeExecutionHostId,
+  isLocalExecutionHost,
+  toRuntimeExecutionHostId,
+  toSshExecutionHostId,
+  type ExecutionHostId
+} from '../../../../shared/execution-host'
+import type { Repo } from '../../../../shared/repo-types'
+import type { Worktree } from '../../../../shared/worktree/types'
 
 export type MachineMatch = {
   snapshot: MachineProviderSnapshot
@@ -72,4 +81,40 @@ export function findMachineForHost(
 
 export function machineTargetKey(target: MachineTarget): string {
   return `${target.providerKey}\0${target.machineId}`
+}
+
+/** The host key a worktree's machine is found by; plain local worktrees have none. */
+export function machineHostKeyForWorktree(
+  worktree: Pick<Worktree, 'hostId'>,
+  repo: Pick<Repo, 'connectionId' | 'executionHostId'> | null | undefined
+): ExecutionHostId | null {
+  const hostId = getWorktreeExecutionHostId(worktree, repo ?? undefined)
+  return isLocalExecutionHost(hostId) ? null : hostId
+}
+
+/** Every host a machine's worktrees can sit on: its SSH target, its server, its managed server. */
+export function machineHostIds(machine: MachineRecord): ExecutionHostId[] {
+  const ids: ExecutionHostId[] = []
+  if (machine.sshTargetId) {
+    ids.push(toSshExecutionHostId(machine.sshTargetId))
+  }
+  for (const environmentId of [machine.runtimeEnvironmentId, machine.managedEnvironmentId]) {
+    if (environmentId) {
+      ids.push(toRuntimeExecutionHostId(environmentId))
+    }
+  }
+  return ids
+}
+
+/** Hosts of this app's archived machines, which the sidebar folds away. */
+export function getArchivedMachineHostIds(
+  snapshots: readonly MachineProviderSnapshot[]
+): Set<string> {
+  return new Set(
+    snapshots.flatMap((snapshot) =>
+      snapshot.machines
+        .filter((machine) => machine.state === 'archived')
+        .flatMap((machine) => machineHostIds(machine))
+    )
+  )
 }
