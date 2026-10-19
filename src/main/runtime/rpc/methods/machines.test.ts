@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { RpcDispatcher } from '../dispatcher'
 import type { RpcRequest } from '../core'
+import type { RpcDispatchStreamingOptions } from '../dispatcher-stream-options'
 import { MACHINE_METHODS } from './machines'
 
 const { getMachineService } = vi.hoisted(() => ({ getMachineService: vi.fn() }))
@@ -12,9 +13,12 @@ vi.mock('../../../machines/machine-service-registration', () => ({ getMachineSer
 const RUNTIME = { getRuntimeId: () => 'runtime-1' } as unknown as OrcaRuntimeService
 const KEY = 'plugin:acme.omarchy/omarchy'
 
-function dispatch(method: string, params?: unknown) {
+function dispatch(method: string, params?: unknown, options?: RpcDispatchStreamingOptions) {
   const request: RpcRequest = { id: 'machines-1', authToken: 'token', method, params }
-  return new RpcDispatcher({ runtime: RUNTIME, methods: MACHINE_METHODS }).dispatch(request)
+  return new RpcDispatcher({ runtime: RUNTIME, methods: MACHINE_METHODS }).dispatch(
+    request,
+    options
+  )
 }
 
 afterEach(() => getMachineService.mockReset())
@@ -60,5 +64,25 @@ describe('machines RPC', () => {
     expect(
       await dispatch('machines.sleep', { providerKey: KEY, machineId: '$(id)' })
     ).toMatchObject({ ok: false })
+  })
+
+  it('lets a phone wake within the mobile scope, logged with its device id', async () => {
+    const wake = vi.fn(async () => ({ id: 'sbx-1', state: 'running' }))
+    getMachineService.mockReturnValue({ wake })
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    const phone: RpcDispatchStreamingOptions = {
+      callerScope: { kind: 'mobile' },
+      clientKind: 'mobile',
+      pairedDeviceId: 'phone-1'
+    }
+    expect(
+      await dispatch('machines.wake', { providerKey: KEY, machineId: 'sbx-1' }, phone)
+    ).toMatchObject({ ok: true, result: { ok: true } })
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('by device phone-1'))
+    // The mobile scope reaches no machine verb beyond read, wake and sleep.
+    expect(await dispatch('machines.create', { providerKey: KEY }, phone)).toMatchObject({
+      ok: false
+    })
+    info.mockRestore()
   })
 })
