@@ -41,11 +41,22 @@ export type BrowserClientPageQueryHost = Pick<
   | 'notifyHeadlessBrowserSessionTabsChanged'
 >
 
-/** Tab commands over client-hosted pages only, for a host whose engine holds no other tabs. */
+/** The tabs a host's own engine holds, beside the pages desktops host for it; null without one. */
+export type BrowserEngineTabs = {
+  list(params: { worktree?: string }): Promise<BrowserTabListResult>
+  switchTo(params: {
+    page: string
+    worktree?: string
+    focus?: boolean
+  }): Promise<BrowserTabSwitchResult>
+}
+
+/** Tab commands over a host's engine tabs, if any, followed by its client-hosted pages. */
 export class BrowserClientPageQueries {
   constructor(
     private readonly host: BrowserClientPageQueryHost,
-    private readonly profileFor: (browserProfileId: string) => BrowserProfileLabel
+    private readonly profileFor: (browserProfileId: string) => BrowserProfileLabel,
+    private readonly engine: BrowserEngineTabs | null
   ) {}
 
   async browserTabList(params: { worktree?: string }): Promise<BrowserTabListResult> {
@@ -53,13 +64,23 @@ export class BrowserClientPageQueries {
       ? (await this.host.resolveBrowserWorkspace(params.worktree)).id
       : undefined
     const pages = this.host.getRuntimeBrowserPageRegistry().listPages(workspaceId)
-    const tabs = pages.map((page, index) =>
-      clientPageTabRow(page, index, this.profileFor(page.browserProfileId))
-    )
+    const clientPageActive = pages.some((page) => page.active)
+    const engineTabs = this.engine
+      ? (await this.engine.list(params)).tabs.map((tab) => ({
+          ...tab,
+          active: clientPageActive ? false : tab.active
+        }))
+      : []
+    const tabs = [
+      ...engineTabs,
+      ...pages.map((page, offset) =>
+        clientPageTabRow(page, engineTabs.length + offset, this.profileFor(page.browserProfileId))
+      )
+    ]
     if (tabs.length > 0 && !tabs.some((tab) => tab.active)) {
       tabs[0] = { ...tabs[0]!, active: true }
     }
-    return { tabs }
+    return { tabs: tabs.map((tab, index) => ({ ...tab, index })) }
   }
 
   async browserTabCurrent(params: { worktree?: string }): Promise<BrowserTabShowResult> {
@@ -72,11 +93,10 @@ export class BrowserClientPageQueries {
 
   async browserTabShow(params: { page: string; worktree?: string }): Promise<BrowserTabShowResult> {
     const page = this.host.getRuntimeBrowserPageRegistry().getPage(params.page)
-    const tab = page
-      ? (
-          await this.browserTabList({ worktree: params.worktree ?? `id:${page.workspaceId}` })
-        ).tabs.find((candidate) => candidate.browserPageId === page.browserPageId)
-      : undefined
+    const worktree = params.worktree ?? (page ? `id:${page.workspaceId}` : undefined)
+    const tab = (await this.browserTabList({ worktree })).tabs.find(
+      (candidate) => candidate.browserPageId === params.page
+    )
     if (!tab) {
       throw new BrowserError('browser_tab_not_found', `Browser page ${params.page} was not found`)
     }
@@ -93,18 +113,43 @@ export class BrowserClientPageQueries {
     const switched = params.page
       ? listed.tabs.findIndex((tab) => tab.browserPageId === params.page)
       : (params.index ?? -1)
-    const pages = this.host.getRuntimeBrowserPageRegistry()
     const selected = listed.tabs[switched]
-    const page = selected ? pages.getPage(selected.browserPageId) : undefined
-    if (!page) {
+    if (!selected) {
       const label = params.page ? `Browser page ${params.page}` : `Tab index ${params.index}`
       throw new BrowserError(
         'browser_tab_not_found',
         `${label} out of range (0-${listed.tabs.length - 1})`
       )
     }
-    activateClientPageTab(this.host, page, params.focus)
-    return { switched, browserPageId: page.browserPageId }
+    const pages = this.host.getRuntimeBrowserPageRegistry()
+    const page = pages.getPage(selected.browserPageId)
+    if (page) {
+      activateClientPageTab(this.host, page, params.focus)
+      return { switched, browserPageId: page.browserPageId }
+    }
+    if (!this.engine) {
+      throw new BrowserError(
+        'browser_tab_not_found',
+        `Browser page ${selected.browserPageId} was not found`
+      )
+    }
+    const result = await this.engine.switchTo({
+      page: selected.browserPageId,
+      ...(params.worktree ? { worktree: params.worktree } : {}),
+      ...(params.focus !== undefined ? { focus: params.focus } : {})
+    })
+    // Why: an engine tab now leads, so no client page may still claim to be active beside it.
+    pages.deactivateGlobal()
+    const workspaceId =
+      typeof selected.worktreeId === 'string'
+        ? selected.worktreeId
+        : params.worktree
+          ? (await this.host.resolveBrowserWorkspace(params.worktree)).id
+          : undefined
+    if (workspaceId) {
+      pages.deactivateWorkspace(workspaceId)
+    }
+    return { switched, browserPageId: result.browserPageId }
   }
 }
 

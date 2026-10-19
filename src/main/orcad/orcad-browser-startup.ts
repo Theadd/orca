@@ -32,12 +32,12 @@ export function startOrcadBrowserProvider(options: OrcadBrowserProviderOptions):
           if (property === 'then' || typeof property !== 'string') {
             return undefined
           }
-          const forward = (args: unknown[]): unknown => {
+          const forward = (args: unknown[], name: string = property): unknown => {
             if (!engineAvailable() || !provider) {
               throw browserUnavailableError()
             }
             commands ??= provider.factory(host)
-            return callBrowserCommand(commands, property, args)
+            return callBrowserCommand(commands, name, args)
           }
           return (
             orcadClientPageCommand(host, property, forward, engineAvailable) ??

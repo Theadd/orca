@@ -64,7 +64,9 @@ function pairedHost(options: { desktopAttached: boolean }) {
       authorityEpoch: 'epoch-a',
       select,
       createClientPage,
-      issueClientPageCommand
+      issueClientPageCommand,
+      // The desktop already let go of the page, so retiring it is only the runtime's record.
+      getPlacement: () => undefined
     }),
     markHeadlessBrowserSessionTabActive: vi.fn(),
     notifyHeadlessBrowserSessionTabsChanged
@@ -206,5 +208,83 @@ it('advertises client hosting with no engine and keeps the engine’s own cause'
   expect(runtimeBrowserCommandsFactoryIsAvailable()).toBe(false)
   expect(runtimeBrowserCommandsFactorySupportsClientHosting()).toBe(true)
   expect(runtimeBrowserUnavailableCause()).toEqual({ reason: 'unconfigured' })
+  await startup.stop()
+})
+
+/** orcad with a working engine that holds one tab of its own. */
+async function startWithEngine() {
+  const engineTab = { browserPageId: 'engine-page', index: 0, url: '', title: '', active: true }
+  const engine = {
+    browserTabList: vi.fn(async () => ({ tabs: [engineTab] })),
+    browserTabSwitch: vi.fn(async () => ({ switched: 0, browserPageId: 'engine-page' })),
+    browserTabClose: vi.fn(async () => ({ closed: true }))
+  }
+  vi.mocked(resolveOrcadBrowserProvider).mockResolvedValueOnce({
+    kind: 'chromium',
+    factory: () => Object.assign(Object.create(null), engine),
+    isAvailable: () => true,
+    stop: async () => {}
+  })
+  const startup = startOrcadBrowserProvider({ userDataPath: '/private-fixture' })
+  await startup.ready
+  return { startup, engine }
+}
+
+it('lists desktop-hosted pages after the engine’s tabs, and switches back to an engine tab', async () => {
+  const { startup, engine } = await startWithEngine()
+  const paired = pairedHost({ desktopAttached: true })
+  const commands = createRuntimeBrowserCommands(paired.host)
+  const opened = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/',
+    worktree: 'id:wt-1'
+  })
+
+  const listed = await commands.browserTabList({ worktree: 'id:wt-1' })
+  expect(listed.tabs.map((tab) => [tab.browserPageId, tab.index, tab.active])).toEqual([
+    ['engine-page', 0, false],
+    [opened.browserPageId, 1, true]
+  ])
+  await expect(commands.browserTabSwitch({ index: 0, worktree: 'id:wt-1' })).resolves.toEqual({
+    switched: 0,
+    browserPageId: 'engine-page'
+  })
+  expect(engine.browserTabSwitch).toHaveBeenCalledWith({ page: 'engine-page', worktree: 'id:wt-1' })
+  expect(paired.pages.getPage(opened.browserPageId)?.active).toBe(false)
+  await startup.stop()
+})
+
+it('closes the current desktop-hosted page itself instead of the engine’s current tab', async () => {
+  const { startup, engine } = await startWithEngine()
+  const paired = pairedHost({ desktopAttached: true })
+  const commands = createRuntimeBrowserCommands(paired.host)
+  const opened = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/',
+    worktree: 'id:wt-1'
+  })
+
+  await expect(commands.browserTabClose({ worktree: 'id:wt-1' })).resolves.toEqual({ closed: true })
+  expect(paired.pages.getPage(opened.browserPageId)).toBeUndefined()
+  expect(engine.browserTabClose).not.toHaveBeenCalled()
+  // With the page gone, the engine's own current tab is the target again.
+  await commands.browserTabClose({ worktree: 'id:wt-1' })
+  expect(engine.browserTabClose).toHaveBeenCalledWith({ worktree: 'id:wt-1' })
+  await startup.stop()
+})
+
+it('closes a desktop-hosted page by index with no engine', async () => {
+  const startup = await startWithoutEngine()
+  const paired = pairedHost({ desktopAttached: true })
+  const commands = createRuntimeBrowserCommands(paired.host)
+  await commands.browserOpenUrlOnClient({ url: 'https://example.org/a', worktree: 'id:wt-1' })
+  const second = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/b',
+    worktree: 'id:wt-1'
+  })
+
+  await expect(commands.browserTabClose({ index: 1, worktree: 'id:wt-1' })).resolves.toEqual({
+    closed: true
+  })
+  expect(paired.pages.getPage(second.browserPageId)).toBeUndefined()
+  expect(paired.pages.listPages('wt-1')).toHaveLength(1)
   await startup.stop()
 })
