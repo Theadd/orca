@@ -63,7 +63,8 @@ export function useComposerTargetState(
       runtimeTargetSelectionBase.selectedRepoIsGit &&
       !runtimeTargetSelectionBase.isProjectGroupTarget,
     projectId: runtimeTargetSelectionBase.selectedProjectId,
-    projectHostSetups: composerTargetStore.projectHostSetups
+    projectHostSetups: composerTargetStore.projectHostSetups,
+    selectedHostId: runtimeTargetSelectionBase.selectedRepoExecutionHostId
   })
   const runtimeTargetSelection = { ...runtimeTargetSelectionBase, machineSelection }
   const initialTargetState = {

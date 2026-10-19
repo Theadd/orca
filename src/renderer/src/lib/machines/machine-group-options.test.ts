@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MachineProviderSnapshot, MachineRecord } from '../../../../shared/machine-inventory'
 import { buildMachineGroupOptions, getMachineLocalExpiry } from './machine-group-options'
-import { findMachineForHost } from './machine-host-match'
+import { findMachineForHost, machineTargetKey } from './machine-host-match'
 
 const PROVIDER = 'plugin:omarchy/omarchy' as const
 
@@ -39,12 +39,12 @@ describe('buildMachineGroupOptions', () => {
         snapshot([
           record('old', { createdAt: '2026-01-01T00:00:00.000Z' }),
           record('new', { createdAt: '2026-09-01T00:00:00.000Z' }),
-          record('bound', { createdAt: '2025-01-01T00:00:00.000Z', sshTargetId: 'machine-a' }),
+          record('bound', { createdAt: '2025-01-01T00:00:00.000Z' }),
           record('gone', { state: 'gone', sshTargetId: 'machine-b' }),
           record('stored', { state: 'archived' })
         ])
       ],
-      projectHostIds: new Set(['ssh:machine-a']),
+      boundMachineKeys: new Set([machineTargetKey({ providerKey: PROVIDER, machineId: 'bound' })]),
       allowCreate: true
     })
     expect(group.machines.map((machine) => machine.name)).toEqual(['bound', 'new', 'old'])
@@ -56,7 +56,7 @@ describe('buildMachineGroupOptions', () => {
     const status = (code: NonNullable<MachineProviderSnapshot['lastFailure']>['code']) =>
       buildMachineGroupOptions({
         snapshots: [snapshot([], { lastFailure: { code, message: 'x', at: 1 }, listedAt: 5 })],
-        projectHostIds: new Set(),
+        boundMachineKeys: new Set(),
         allowCreate: true
       })[0].status
     expect(status('auth-required')).toEqual({ kind: 'sign-in' })
@@ -69,7 +69,7 @@ describe('buildMachineGroupOptions', () => {
     const options = (allowCreate: boolean, verbs: ('create' | 'wake')[]) =>
       buildMachineGroupOptions({
         snapshots: [snapshot([], { capabilities: { verbs, lifetimes: ['temporary'] } })],
-        projectHostIds: new Set(),
+        boundMachineKeys: new Set(),
         allowCreate
       })[0].canCreate
     expect(options(true, ['create'])).toBe(true)

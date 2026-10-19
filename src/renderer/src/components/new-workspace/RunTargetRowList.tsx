@@ -58,7 +58,7 @@ export default function RunTargetRowList({
 }): React.JSX.Element {
   return (
     <>
-      {rows.map((row) => {
+      {rows.map((row, index) => {
         if (row.kind === 'add-host') {
           return null
         }
@@ -83,43 +83,49 @@ export default function RunTargetRowList({
           )
         }
         if (row.kind === 'needs-setup') {
+          // Why: hosts that still need setup follow the machine groups; a rule ends the last group.
+          const closesMachineGroup = rows[index - 1]?.kind.startsWith('machine') ?? false
           const connecting = connectingHostIds.has(row.option.hostId)
           const hasConnect = Boolean(row.option.connectAction && canConnect)
           const hasSetLocation = Boolean(row.option.canSetLocation && canSetLocation)
           return (
-            <RunTargetRow
-              key={row.key}
-              icon={
-                <NeedsSetupHostIcon
-                  hostId={row.option.hostId}
-                  connecting={connecting}
-                  attention={row.option.attention}
-                />
-              }
-              label={row.option.label}
-              // Why: Connect / Set project location already say the next
-              // step, so the detail line would only repeat that.
-              detail={hasConnect || hasSetLocation ? '' : row.option.detail}
-              armed={isArmed}
-              current={false}
-              dimmed
-              optionId={optionId}
-              onArm={() => onArm(row.key, null)}
-              onCommit={() => onSetLocation(row.option)}
-              trailing={
-                hasConnect ? (
-                  <ConnectHostButton
+            <React.Fragment key={row.key}>
+              {closesMachineGroup ? (
+                <div role="separator" className="-mx-1 my-1 h-px bg-border" />
+              ) : null}
+              <RunTargetRow
+                icon={
+                  <NeedsSetupHostIcon
+                    hostId={row.option.hostId}
                     connecting={connecting}
-                    onConnect={() => onConnectHost(row.option)}
+                    attention={row.option.attention}
                   />
-                ) : hasSetLocation ? (
-                  <SetLocationButton
-                    hostLabel={row.option.label}
-                    onSetLocation={() => onSetLocation(row.option)}
-                  />
-                ) : undefined
-              }
-            />
+                }
+                label={row.option.label}
+                // Why: Connect / Set project location already say the next
+                // step, so the detail line would only repeat that.
+                detail={hasConnect || hasSetLocation ? '' : row.option.detail}
+                armed={isArmed}
+                current={false}
+                dimmed
+                optionId={optionId}
+                onArm={() => onArm(row.key, null)}
+                onCommit={() => onSetLocation(row.option)}
+                trailing={
+                  hasConnect ? (
+                    <ConnectHostButton
+                      connecting={connecting}
+                      onConnect={() => onConnectHost(row.option)}
+                    />
+                  ) : hasSetLocation ? (
+                    <SetLocationButton
+                      hostLabel={row.option.label}
+                      onSetLocation={() => onSetLocation(row.option)}
+                    />
+                  ) : undefined
+                }
+              />
+            </React.Fragment>
           )
         }
         if (row.kind === 'recipes') {

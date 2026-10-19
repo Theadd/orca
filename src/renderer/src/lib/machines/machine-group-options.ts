@@ -4,13 +4,9 @@ import type {
   MachineProviderSnapshot,
   MachineRecord
 } from '../../../../shared/machine-inventory'
-import {
-  toRuntimeExecutionHostId,
-  toSshExecutionHostId,
-  type ExecutionHostId
-} from '../../../../shared/execution-host'
 import type { MachineLifetime } from '../../../../shared/machine-provider-protocol'
 import { getMachineDisplayState, type MachineDisplayState } from './machine-display-state'
+import { machineTargetKey } from './machine-host-match'
 
 export type MachineOption = {
   providerKey: MachineProviderKey
@@ -38,16 +34,6 @@ export type MachineGroupOption = {
   machines: readonly MachineOption[]
   archived: readonly MachineOption[]
   canCreate: boolean
-}
-
-/** The host a connected machine runs worktrees on, if it has been connected. */
-export function getMachineHostId(machine: MachineRecord): ExecutionHostId | null {
-  if (machine.sshTargetId) {
-    return toSshExecutionHostId(machine.sshTargetId)
-  }
-  return machine.runtimeEnvironmentId
-    ? toRuntimeExecutionHostId(machine.runtimeEnvironmentId)
-    : null
 }
 
 /** Local epoch ms of `expiresAt`, corrected for the provider's clock. */
@@ -100,20 +86,22 @@ function toOption(snapshot: MachineProviderSnapshot, machine: MachineRecord): Ma
  */
 export function buildMachineGroupOptions({
   snapshots,
-  projectHostIds,
+  boundMachineKeys,
   allowCreate
 }: {
   snapshots: readonly MachineProviderSnapshot[]
-  /** Hosts where the selected project already has a location. */
-  projectHostIds: ReadonlySet<string>
+  /** `machineTargetKey`s of machines the selected project already has a location on. */
+  boundMachineKeys: ReadonlySet<string>
   allowCreate: boolean
 }): MachineGroupOption[] {
   return snapshots.map((snapshot) => {
     const usable = snapshot.machines.filter((machine) => machine.state !== 'gone')
-    const bound = (machine: MachineRecord): number => {
-      const hostId = getMachineHostId(machine)
-      return hostId && projectHostIds.has(hostId) ? 0 : 1
-    }
+    const bound = (machine: MachineRecord): number =>
+      boundMachineKeys.has(
+        machineTargetKey({ providerKey: snapshot.providerKey, machineId: machine.id })
+      )
+        ? 0
+        : 1
     const ordered = [...usable].sort(
       (a, b) => bound(a) - bound(b) || Date.parse(b.createdAt) - Date.parse(a.createdAt)
     )

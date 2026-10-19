@@ -156,7 +156,13 @@ export function NewWorkspaceComposerProjectSection({
             {translate('auto.components.NewWorkspaceComposerCard.runOn', 'Run on')}
           </label>
           <RunTargetCombobox
-            hostOptions={projectHostSetupOptions ?? []}
+            hostOptions={
+              machineSelection
+                ? (projectHostSetupOptions ?? []).filter(
+                    (option) => !machineSelection.machineHostIds.has(option.hostId)
+                  )
+                : (projectHostSetupOptions ?? [])
+            }
             hostValue={selectedProjectHostSetupId ?? null}
             hostExecutionHostId={selectedRepoExecutionHostId}
             onHostChange={handleProjectHostSetupChange}

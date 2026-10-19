@@ -66,11 +66,11 @@ function matches(haystack: string, query: string): boolean {
   return haystack.toLowerCase().includes(query)
 }
 
-/** Ready hosts first, then hosts that still need a connection or a project location. */
+/** Hosts that can run now, and hosts that still need a connection or a project location. */
 function buildHostRows(
   hostOptions: readonly ProjectHostSetupOption[],
   query: string
-): RunTargetRowModel[] {
+): { ready: RunTargetRowModel[]; needsSetup: RunTargetRowModel[] } {
   const hostMatches = (option: ProjectHostSetupOption): boolean =>
     query === '' ||
     matches(option.label, query) ||
@@ -85,18 +85,18 @@ function buildHostRows(
     (option): option is NeedsSetupProjectHostOption =>
       option.kind === 'needs-setup' && hostMatches(option)
   )
-  return [
-    ...ready.map((option) => ({
+  return {
+    ready: ready.map((option) => ({
       key: `host:${getProjectHostSetupSelectionKey(option)}`,
       kind: 'ready' as const,
       option
     })),
-    ...needsSetup.map((option) => ({
+    needsSetup: needsSetup.map((option) => ({
       key: `needs:${getProjectHostSetupSelectionKey(option)}`,
       kind: 'needs-setup' as const,
       option
     }))
-  ]
+  }
 }
 
 function matchRecipes(
@@ -146,9 +146,12 @@ export function buildRunTargetRows({
 }): { rows: RunTargetRowModel[]; matchedRecipes: EphemeralVmRecipeOption[] } {
   const trimmed = query.trim().toLowerCase()
   const matchedRecipes = matchRecipes(recipes, trimmed)
+  const hosts = buildHostRows(hostOptions, trimmed)
+  // Why: machines can run now, so they sit above hosts that still need a connection.
   const rows: RunTargetRowModel[] = [
-    ...buildHostRows(hostOptions, trimmed),
+    ...hosts.ready,
     ...buildMachineRows({ groups: machineGroups, query: trimmed, views: machineViews }),
+    ...hosts.needsSetup,
     ...buildSubmenuRows(matchedRecipes.length > 0, hasAddHost)
   ]
   return { rows, matchedRecipes }
