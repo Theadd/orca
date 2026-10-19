@@ -8550,6 +8550,7 @@
           "serverRuntimeUnavailableDescription": "Le transport SSH est connecté, mais le runtime Orca n'a pas répondu. L'hôte est peut-être toujours en cours d'exécution.",
           "serverReconnecting": "Reconnexion",
           "accessRevoked": "{{value0}} no longer accepts this computer. Re-pair it with a new access link.",
+          "managedAccessRevoked": "{{value0}} no longer accepts this computer, and Orca couldn't pair with it again over SSH. Connect to try again.",
           "repair": "Re-pair…",
           "serverAccessRevoked": "Access revoked",
           "orcaVersionLastSeen": "Orca v{{value0}} (last seen)"

@@ -102,13 +102,20 @@ export function RuntimeServerRow({
     snapshot.blockedReason === 'access-revoked'
   // Why: managed and cloud-workspace servers are paired by the service that owns them.
   const repairable = !environment.orcadDeployment && isUserManagedRuntimeEnvironment(environment)
-  const detailsDescription = accessRevoked
-    ? translate(
-        'auto.components.settings.RuntimeEnvironmentsPane.accessRevoked',
-        '{{value0}} no longer accepts this computer. Re-pair it with a new access link.',
-        { value0: environment.name }
-      )
-    : getHostDetailsDescription(effectiveDetails)
+  const detailsDescription = !accessRevoked
+    ? getHostDetailsDescription(effectiveDetails)
+    : environment.orcadDeployment
+      ? // Why: Orca pairs a managed server over SSH by itself; it reaches here only when that failed.
+        translate(
+          'auto.components.settings.RuntimeEnvironmentsPane.managedAccessRevoked',
+          "{{value0}} no longer accepts this computer, and Orca couldn't pair with it again over SSH. Connect to try again.",
+          { value0: environment.name }
+        )
+      : translate(
+          'auto.components.settings.RuntimeEnvironmentsPane.accessRevoked',
+          '{{value0}} no longer accepts this computer. Re-pair it with a new access link.',
+          { value0: environment.name }
+        )
   const connectionState =
     details?.status === 'loading' && !runtimeStatusEntry?.status
       ? 'checking'

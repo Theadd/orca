@@ -11,7 +11,10 @@ import { retainOrcadMigrationSource } from '../../ssh/orcad-migration-source-ret
 import { hasOrcadTemplate } from '../../orcad/orcad-artifact-materializer'
 import { isOrcadHostUnavailableFixableOnHost } from '../../orcad/orcad-host-unavailable'
 import { managedServerUpdateDeps } from '../../ssh/managed-server-update-deps'
-import { ensureOrcadManagedTunnel } from '../../managed-server/lifecycle/orcad-managed-tunnel'
+import {
+  ensureOrcadManagedTunnel,
+  forgetFailedManagedOrcadPairingRepair
+} from '../../managed-server/lifecycle/orcad-managed-tunnel'
 import { verifyOrcadManagedServing } from '../../managed-server/lifecycle/orcad-managed-serving-verify'
 import { convertSshTargetToManagedOrcad } from '../../managed-server/lifecycle/orcad-runtime-conversion'
 import {
@@ -52,6 +55,7 @@ export function hostServerOnConnectDeps(userDataPath: string): HostServerOnConne
       return environmentId && isRegistered(environmentId) ? environmentId : null
     },
     ensureTunnel: async (environmentId) => {
+      forgetFailedManagedOrcadPairingRepair(userDataPath, environmentId)
       await ensureOrcadManagedTunnel(userDataPath, environmentId)
     },
     ensureServing: (environmentId) => verifyOrcadManagedServing(userDataPath, environmentId),

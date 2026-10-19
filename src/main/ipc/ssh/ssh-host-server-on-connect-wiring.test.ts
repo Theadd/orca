@@ -34,7 +34,8 @@ vi.mock('../../managed-server/lifecycle/orcad-runtime-conversion', () => ({
   convertSshTargetToManagedOrcad: mocks.convert
 }))
 vi.mock('../../managed-server/lifecycle/orcad-managed-tunnel', () => ({
-  ensureOrcadManagedTunnel: mocks.tunnel
+  ensureOrcadManagedTunnel: mocks.tunnel,
+  forgetFailedManagedOrcadPairingRepair: vi.fn()
 }))
 vi.mock('../../orcad/orcad-artifact-materializer', () => ({ hasOrcadTemplate: () => true }))
 vi.mock('./ssh-renderer-broadcast', () => ({ broadcastSshState: mocks.broadcast }))

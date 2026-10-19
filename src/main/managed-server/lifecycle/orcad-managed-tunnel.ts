@@ -14,6 +14,15 @@ import {
   MANAGED_ORCAD_TUNNEL_TARGETING,
   type OrcadTunnelStartChecks
 } from './orcad-managed-tunnel-target'
+import {
+  liveManagedOrcadPairingRepairDeps,
+  ManagedOrcadPairingRepairs
+} from './orcad-managed-pairing-repair'
+import {
+  buildWithPairingRepair,
+  type ManagedOrcadPairingRecovery
+} from './orcad-managed-tunnel-pairing-recovery'
+import { notifyManagedOrcadPairingRepaired } from './orcad-managed-pairing-repaired-listener'
 
 const managedTunnels = new OrcadManagedTunnelManager({
   getConnectionManager: getSshConnectionManager,
@@ -27,13 +36,28 @@ const managedTunnels = new OrcadManagedTunnelManager({
     })
 })
 
+const pairingRepairs = new Map<string, ManagedOrcadPairingRepairs>()
+
+function pairingRecovery(userDataPath: string): ManagedOrcadPairingRecovery {
+  let repairs = pairingRepairs.get(userDataPath)
+  if (!repairs) {
+    repairs = new ManagedOrcadPairingRepairs(liveManagedOrcadPairingRepairDeps(userDataPath))
+    pairingRepairs.set(userDataPath, repairs)
+  }
+  return {
+    resolve: (environmentId) => resolveEnvironment(userDataPath, environmentId),
+    repairs,
+    repaired: notifyManagedOrcadPairingRepaired
+  }
+}
+
 export async function ensureOrcadManagedTunnel(
   userDataPath: string,
   selector: string
 ): Promise<void> {
-  const environment = resolveEnvironment(userDataPath, selector)
-  await managedTunnels.ensure(environment, () =>
-    resolveEnvironmentOrNull(userDataPath, environment.id)
+  const { id } = resolveEnvironment(userDataPath, selector)
+  await buildWithPairingRepair(pairingRecovery(userDataPath), id, (environment) =>
+    managedTunnels.ensure(environment, () => resolveEnvironmentOrNull(userDataPath, id))
   )
 }
 
@@ -41,11 +65,30 @@ export async function ensureOrcadManagedTunnel(
 export async function rebuildOrcadManagedTunnel(
   userDataPath: string,
   selector: string
-): Promise<void> {
-  const environment = resolveEnvironment(userDataPath, selector)
-  await managedTunnels.rebuild(environment, () =>
-    resolveEnvironmentOrNull(userDataPath, environment.id)
+): Promise<'built' | 'repaired'> {
+  const { id } = resolveEnvironment(userDataPath, selector)
+  return buildWithPairingRepair(pairingRecovery(userDataPath), id, (environment) =>
+    managedTunnels.rebuild(environment, () => resolveEnvironmentOrNull(userDataPath, id))
   )
+}
+
+/**
+ * A socket through a standing tunnel had its token refused. Forwarding anew re-proves which
+ * server answers, so only our own server's refusal re-pairs; a foreign one fails as foreign.
+ */
+export function recoverRefusedManagedOrcadPairing(
+  userDataPath: string,
+  environmentId: string
+): Promise<'built' | 'repaired'> {
+  return rebuildOrcadManagedTunnel(userDataPath, environmentId)
+}
+
+/** An explicit connect is the user asking again, so a recent failed re-pair must not answer it. */
+export function forgetFailedManagedOrcadPairingRepair(
+  userDataPath: string,
+  environmentId: string
+): void {
+  pairingRepairs.get(userDataPath)?.forgetHeldFailure(environmentId)
 }
 
 function resolveEnvironmentOrNull(userDataPath: string, id: string) {

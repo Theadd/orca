@@ -129,6 +129,10 @@ export async function forwardToVerifiedOrcad(
       return forward
     }
     await args.forwards.removeForwardAndWait(forward.id)
+    // Why no re-read: our own server answered on this port; only its pairing is wrong.
+    if (identity.verdict === 'unpaired') {
+      throw orcadIdentityRefusal(remotePort, identity)
+    }
     const reread =
       attempt === 0 && args.rereadRemotePort ? await args.rereadRemotePort() : remotePort
     if (reread === remotePort || !args.stillCurrent()) {

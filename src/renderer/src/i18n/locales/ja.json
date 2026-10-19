@@ -8426,6 +8426,7 @@
           "serverRuntimeUnavailableDescription": "SSH トランスポートは接続されていますが、Orca ランタイムが応答しませんでした。ホストがまだ実行中の可能性があります。",
           "serverReconnecting": "再接続中",
           "accessRevoked": "{{value0}} no longer accepts this computer. Re-pair it with a new access link.",
+          "managedAccessRevoked": "{{value0}} no longer accepts this computer, and Orca couldn't pair with it again over SSH. Connect to try again.",
           "repair": "Re-pair…",
           "serverAccessRevoked": "Access revoked",
           "orcaVersionLastSeen": "Orca v{{value0}} (last seen)"

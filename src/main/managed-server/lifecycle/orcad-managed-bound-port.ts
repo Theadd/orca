@@ -39,11 +39,9 @@ export function orcadBoundPort(readiness: Pick<ServeReadiness, 'boundEndpoint'>)
   }
 }
 
-/** Falls back to the preferred port only when the slot published no endpoint (older builds). */
-export async function readManagedOrcadBoundPort(
-  target: OrcadRemoteExecTarget & { remoteInstallDir: string },
-  preferredPort: number
-): Promise<number> {
+async function readManagedOrcadSlotReadiness(
+  target: OrcadRemoteExecTarget & { remoteInstallDir: string }
+): Promise<ServeReadiness | null> {
   const parsed = parseOrcadReadinessWaitOutput(
     target.host,
     await execOrcadRemote(
@@ -51,7 +49,33 @@ export async function readManagedOrcadBoundPort(
       readOrcadReadinessNowCommand(target.host, target.remoteInstallDir)
     )
   )
-  return (parsed.state === 'ready' ? orcadBoundPort(parsed.readiness) : null) ?? preferredPort
+  return parsed.state === 'ready' ? parsed.readiness : null
+}
+
+/** Falls back to the preferred port only when the slot published no endpoint (older builds). */
+export async function readManagedOrcadBoundPort(
+  target: OrcadRemoteExecTarget & { remoteInstallDir: string },
+  preferredPort: number
+): Promise<number> {
+  const readiness = await readManagedOrcadSlotReadiness(target)
+  return (readiness ? orcadBoundPort(readiness) : null) ?? preferredPort
+}
+
+/** What the active slot publishes now, read over SSH; null when none is active or ready. */
+export async function readActiveManagedOrcadReadiness(
+  input: Pick<OrcadTunnelPortInput, 'target' | 'connection'>
+): Promise<ServeReadiness | null> {
+  const context = await resolveOrcadRemoteContext(input.target, input.connection)
+  const active = context.activationRecord.active
+  if (!active) {
+    return null
+  }
+  return readManagedOrcadSlotReadiness({
+    conn: context.connection,
+    host: context.host,
+    remoteHome: context.remoteHome,
+    remoteInstallDir: managedOrcadInstallDir(context, active)
+  })
 }
 
 /** Where a tunnel to this environment must point; independent SSH access keeps its own port. */
@@ -64,20 +88,8 @@ export async function resolveManagedOrcadTunnelPort(input: OrcadTunnelPortInput)
     return access.remotePort
   }
   try {
-    const context = await resolveOrcadRemoteContext(input.target, input.connection)
-    const active = context.activationRecord.active
-    if (!active) {
-      return access.remotePort
-    }
-    return await readManagedOrcadBoundPort(
-      {
-        conn: context.connection,
-        host: context.host,
-        remoteHome: context.remoteHome,
-        remoteInstallDir: managedOrcadInstallDir(context, active)
-      },
-      access.remotePort
-    )
+    const readiness = await readActiveManagedOrcadReadiness(input)
+    return (readiness ? orcadBoundPort(readiness) : null) ?? access.remotePort
   } catch (error) {
     // Why fall back: the identity check after the forward still catches a wrong server.
     console.warn(
