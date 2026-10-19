@@ -111,21 +111,46 @@ export function hasMachineProviders(): boolean {
   )
 }
 
+function hasAnyMachine(state: AppState): boolean {
+  const hasMachines = (snapshots: Iterable<MachineProviderSnapshot>): boolean =>
+    [...snapshots].some((snapshot) => snapshot.machines.length > 0)
+  return (
+    hasMachines(Object.values(state.machineProviders)) ||
+    Object.values(state.machineEnvironmentProviders).some((snapshots) => hasMachines(snapshots))
+  )
+}
+
 /**
- * Follows machine inventories while machines are enabled; mounted once near the app root. It
- * re-lists each minute the window is visible, and nothing polls while the window is hidden.
+ * Follows machine inventories while machines are enabled; mounted once near the app root. Paired
+ * servers are read once; while any machine exists, everything re-lists each minute the window is
+ * visible, so a provider without machines is never polled.
  */
 export function useMachineInventory(enabled: boolean): void {
+  const machinesExist = useAppStore(hasAnyMachine)
+  // Why: a string keeps the selector stable; a server that becomes reachable is read then.
+  const reachable = useAppStore((state) => reachableEnvironmentIds(state).join('\n'))
   useEffect(() => {
-    if (!enabled) {
+    if (enabled) {
+      ensureMachinesLoaded()
+    }
+  }, [enabled])
+  useEffect(() => {
+    if (!enabled || !reachable) {
       return
     }
-    ensureMachinesLoaded()
+    for (const environmentId of reachable.split('\n')) {
+      void loadEnvironmentMachines(environmentId)
+    }
+  }, [enabled, reachable])
+  useEffect(() => {
+    if (!enabled || !machinesExist) {
+      return
+    }
     return installWindowVisibilityInterval({
       run: refreshAllMachines,
       intervalMs: VISIBLE_LIST_MAX_AGE_MS
     })
-  }, [enabled])
+  }, [enabled, machinesExist])
 }
 
 let sourcesCache: {
