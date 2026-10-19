@@ -4,6 +4,8 @@ import type { RuntimeStatus } from '../../../shared/runtime-types'
 import type { AppState } from '@/store/types'
 import { isPairedWebClientWindow } from './desktop-window-chrome'
 import { runtimeEnvironmentIdWithLegacyFallbackUnlessTwin } from './worktree-runtime-owner'
+import { expectsBrowserClientHosting } from '../../../shared/browser-client-hosting-eligibility'
+import { getOrcadSshDeployment } from '../../../shared/runtime-environments'
 
 export const MANAGED_BROWSER_UNAVAILABLE_MESSAGE =
   "Managed browser tabs are unavailable because this web client's paired runtime does not support browser streaming."
@@ -32,6 +34,8 @@ export function resolveClientCreationActionPolicy(args: {
   surface: 'electron' | 'paired-web'
   runtimeStatus: Pick<RuntimeStatus, 'capabilities' | 'hostPlatform'> | null
   floatingWorkspace?: boolean
+  /** The runtime places its pages on this desktop (see runtimeHostsPagesOnThisDesktop). */
+  runtimeHostsPagesOnThisDesktop?: boolean
 }): ClientCreationActionPolicy {
   const browserStreamingAvailable = args.runtimeStatus?.capabilities?.includes(
     BROWSER_SCREENCAST_RUNTIME_CAPABILITY
@@ -41,7 +45,10 @@ export function resolveClientCreationActionPolicy(args: {
     return {
       'managed-browser': {
         state: 'enabled',
-        provider: browserStreamingAvailable ? 'paired-runtime' : 'local-client'
+        provider:
+          browserStreamingAvailable || args.runtimeHostsPagesOnThisDesktop
+            ? 'paired-runtime'
+            : 'local-client'
       },
       'mobile-emulator': { state: 'enabled', provider: 'local-client' }
     }
@@ -75,7 +82,33 @@ export function getClientCreationActionPolicy(
   return resolveClientCreationActionPolicy({
     surface: isPairedWebClientWindow() ? 'paired-web' : 'electron',
     runtimeStatus,
-    floatingWorkspace
+    floatingWorkspace,
+    runtimeHostsPagesOnThisDesktop:
+      runtimeEnvironmentId !== null && runtimeHostsPagesOnThisDesktop(state, runtimeEnvironmentId)
+  })
+}
+
+/**
+ * A runtime with no browser of its own (orcad) whose pages this desktop hosts, network tunnelled
+ * through the runtime. A managed SSH deployment keeps desktop tabs on its SSH browser route.
+ */
+export function runtimeHostsPagesOnThisDesktop(
+  state: Pick<AppState, 'runtimeStatusByEnvironmentId' | 'runtimeEnvironments' | 'settings'>,
+  runtimeEnvironmentId: string
+): boolean {
+  if (isPairedWebClientWindow()) {
+    return false
+  }
+  const environment = state.runtimeEnvironments?.find((entry) => entry.id === runtimeEnvironmentId)
+  if (environment && getOrcadSshDeployment(environment)) {
+    return false
+  }
+  const status = state.runtimeStatusByEnvironmentId?.get(runtimeEnvironmentId)?.status
+  return expectsBrowserClientHosting({
+    enabled: state.settings?.browserClientHostedRemoteEnabled !== false,
+    preference: undefined,
+    deviceScope: status?.deviceScope,
+    capabilities: status?.capabilities
   })
 }
 
@@ -96,7 +129,10 @@ export function assertRuntimeManagedBrowserCreationAvailable(
 ): void {
   const capabilities =
     state.runtimeStatusByEnvironmentId?.get(runtimeEnvironmentId)?.status?.capabilities
-  if (!capabilities?.includes(BROWSER_SCREENCAST_RUNTIME_CAPABILITY)) {
+  if (
+    !capabilities?.includes(BROWSER_SCREENCAST_RUNTIME_CAPABILITY) &&
+    !runtimeHostsPagesOnThisDesktop(state, runtimeEnvironmentId)
+  ) {
     throw new Error(RUNTIME_BROWSER_UNAVAILABLE_MESSAGE)
   }
 }

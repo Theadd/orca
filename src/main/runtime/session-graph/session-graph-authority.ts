@@ -25,6 +25,7 @@ import {
   isDesktopBrowserBridgeHostEnabled
 } from '../desktop-browser-bridge/desktop-browser-bridge-registry'
 import { runtimeBrowserCommandsFactoryIsAvailable } from '../runtime-browser-commands-factory'
+import { hasPairedPageHost } from '../browser/browser-client-page-opening'
 import { resolveRemoteCliBrowserScopeSelector } from '../desktop-browser-bridge/remote-cli-browser-scope'
 import type { RpcContext } from '../rpc/core'
 
@@ -231,7 +232,10 @@ export abstract class OrcaRuntimeWithTransitionGraphReloadToTerminalState extend
       signal: context.signal,
       hostEnabled: isDesktopBrowserBridgeHostEnabled(),
       registry: getDesktopBrowserBridgeRegistry(this),
-      localBrowserAvailable: runtimeBrowserCommandsFactoryIsAvailable(),
+      // Why a desktop hosting this runtime's pages counts: those commands never need the bridge.
+      localBrowserAvailable:
+        runtimeBrowserCommandsFactoryIsAvailable() ||
+        hasPairedPageHost({ getBrowserHostLeaseRegistry: () => getBrowserHostLeaseRegistry(this) }),
       resolveWorkspace: (selector) => this.resolveBrowserWorkspace(selector)
     })
   }
