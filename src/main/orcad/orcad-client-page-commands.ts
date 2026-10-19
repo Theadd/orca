@@ -23,6 +23,7 @@ import {
 } from '../runtime/browser/browser-client-page-opening'
 import { BrowserClientPageQueries } from '../runtime/browser/browser-client-page-queries'
 import type { RuntimeBrowserClientPage } from '../runtime/runtime-browser-page-registry'
+import { browserTabCreateClientPageStartsActive } from '../runtime/browser-tab-create-publication'
 
 type Forward = (args: unknown[]) => unknown
 
@@ -70,12 +71,44 @@ export function orcadClientPageCommand(
   }
   const query = CLIENT_PAGE_TAB_QUERIES.find((candidate) => candidate === name)
   if (query) {
-    return (...args: unknown[]) =>
-      engineAvailable() || !servesClientPages(host)
-        ? forward(args)
-        : callTabQuery(clientPageQueries(host), query, args)
+    return (...args: unknown[]) => {
+      if (!engineAvailable()) {
+        return servesClientPages(host)
+          ? callTabQuery(clientPageQueries(host), query, args)
+          : forward(args)
+      }
+      return query === 'browserTabSwitch'
+        ? afterEngineSelects(host, args[0], () => forward(args))
+        : forward(args)
+    }
   }
   return undefined
+}
+
+/**
+ * Runs an engine create or switch, then hands the workspace's selection to the engine tab: the
+ * dispatcher sends workspace automation without --page to the active client page, so one left
+ * active would keep taking commands meant for the tab the engine now reports as current.
+ */
+function afterEngineSelects(
+  host: RuntimeBrowserCommandHost,
+  params: unknown,
+  run: () => unknown
+): unknown {
+  if (host.getRuntimeBrowserPageRegistry().listPages().length === 0) {
+    return run()
+  }
+  return (async () => {
+    const result = await run()
+    const worktree =
+      isRecord(params) && typeof params.worktree === 'string' ? params.worktree : null
+    const pages = host.getRuntimeBrowserPageRegistry()
+    pages.deactivateGlobal()
+    if (worktree) {
+      pages.deactivateWorkspace((await host.resolveBrowserWorkspace(worktree)).id)
+    }
+    return result
+  })()
 }
 
 function createTab(
@@ -110,7 +143,10 @@ function createTab(
       orcadBrowserProfileId(params?.profileId)
     )
   }
-  return forward([params, caller])
+  if (!engineAvailable() || !browserTabCreateClientPageStartsActive(params?.activate)) {
+    return forward([params, caller])
+  }
+  return afterEngineSelects(host, params, () => forward([params, caller]))
 }
 
 async function activeClientPage(

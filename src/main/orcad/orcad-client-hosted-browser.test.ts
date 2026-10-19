@@ -222,6 +222,8 @@ async function startWithEngine() {
   const engineTab = { browserPageId: 'engine-page', index: 0, url: '', title: '', active: true }
   const engine = {
     browserTabList: vi.fn(async () => ({ tabs: [engineTab] })),
+    browserTabCreate: vi.fn(async () => ({ browserPageId: 'engine-page' })),
+    browserTabSwitch: vi.fn(async () => ({ switched: 0, browserPageId: 'engine-page' })),
     browserTabClose: vi.fn(async () => ({ closed: true }))
   }
   vi.mocked(resolveOrcadBrowserProvider).mockResolvedValueOnce({
@@ -250,6 +252,28 @@ it('closes the current desktop-hosted page itself instead of the engine’s curr
   // With the page gone, the engine's own current tab is the target again.
   await commands.browserTabClose({ worktree: 'id:wt-1' })
   expect(engine.browserTabClose).toHaveBeenCalledWith({ worktree: 'id:wt-1' })
+  await startup.stop()
+})
+
+it('hands workspace commands back to the engine once it creates or selects a tab', async () => {
+  const { startup, engine } = await startWithEngine()
+  const paired = pairedHost({ desktopAttached: true })
+  const commands = createRuntimeBrowserCommands(paired.host)
+  const isActive = (browserPageId: string): boolean | undefined =>
+    paired.pages.getPage(browserPageId)?.active
+  const opened = await commands.browserOpenUrlOnClient({
+    url: 'https://example.org/',
+    worktree: 'id:wt-1'
+  })
+  expect(isActive(opened.browserPageId)).toBe(true)
+
+  await commands.browserTabCreate({ worktree: 'id:wt-1', url: 'https://engine.test/' })
+  expect(engine.browserTabCreate).toHaveBeenCalled()
+  expect(isActive(opened.browserPageId)).toBe(false)
+
+  await commands.browserTabSwitch({ page: opened.browserPageId, worktree: 'id:wt-1' })
+  expect(engine.browserTabSwitch).toHaveBeenCalled()
+  expect(isActive(opened.browserPageId)).toBe(false)
   await startup.stop()
 })
 
