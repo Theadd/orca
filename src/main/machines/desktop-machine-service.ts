@@ -18,6 +18,7 @@ import { connectRegisteredSshTarget } from '../ssh/targets/ssh-target-registry'
 import type { MachineSshTargets } from './machine-connect'
 import { MachineService, type MachineProviderEntry } from './machine-service'
 import { MachineExpiryWarnings } from './machine-expiry-warnings'
+import { registerMachineService } from './machine-service-registration'
 import { machineExpiryNotification } from './machine-expiry-notification'
 import { readMachineWorkAtRisk, type MachineWorkAtRisk } from './machine-work-at-risk'
 import { dispatchDesktopNotification } from '../ipc/notifications'
@@ -27,13 +28,6 @@ import {
   toSshExecutionHostId,
   type ExecutionHostId
 } from '../../shared/execution-host'
-
-let registered: { service: MachineService; isEnabled: () => boolean } | null = null
-
-/** The host's MachineService for runtime RPC; null where none is registered or the flag is off. */
-export function getMachineService(): MachineService | null {
-  return registered?.isEnabled() ? registered.service : null
-}
 
 function requireSshStore(): NonNullable<ReturnType<typeof getSshConnectionStore>> {
   const store = getSshConnectionStore()
@@ -142,7 +136,7 @@ export function createDesktopMachineService(options: {
     }
   })
   expiryWarnings.reschedule()
-  registered = { service, isEnabled }
+  registerMachineService(service, isEnabled)
   return {
     service,
     expiryWarnings,

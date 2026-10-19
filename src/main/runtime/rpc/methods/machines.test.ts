@@ -6,7 +6,7 @@ import type { RpcRequest } from '../core'
 import { MACHINE_METHODS } from './machines'
 
 const { getMachineService } = vi.hoisted(() => ({ getMachineService: vi.fn() }))
-vi.mock('../../../machines/desktop-machine-service', () => ({ getMachineService }))
+vi.mock('../../../machines/machine-service-registration', () => ({ getMachineService }))
 
 // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: these handlers read no runtime member; only the reply envelope needs getRuntimeId.
 const RUNTIME = { getRuntimeId: () => 'runtime-1' } as unknown as OrcaRuntimeService

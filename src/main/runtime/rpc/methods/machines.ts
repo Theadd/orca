@@ -5,7 +5,7 @@ import type {
 import { MachineProviderError } from '../../../../shared/machine-provider-protocol'
 import { MACHINES_DISABLED, toMachineActionResult } from '../../../machines/machine-action-result'
 import { MachineSelector, MachinesList } from '../../../../shared/rpc-contract/machine-params'
-import { getMachineService } from '../../../machines/desktop-machine-service'
+import { getMachineService } from '../../../machines/machine-service-registration'
 import type { MachineService } from '../../../machines/machine-service'
 import { defineMethod, type RpcContext } from '../core'
 
