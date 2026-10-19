@@ -141,11 +141,12 @@ const WITHDRAW_OFFER =
 test('a failed re-pair says why, and the pane stops reconnecting with that verdict', async (// oxlint-disable-next-line no-empty-pattern -- Owns its app launch through a restart session.
 {}, testInfo) => {
   test.setTimeout(15 * 60_000)
-  let proxy: FreezableTcpProxy | null = null
+  const opened: FreezableTcpProxy[] = []
   try {
     await withManagedHost(testInfo, async (fixture) => {
       const { host } = fixture
-      proxy = await startFreezableTcpProxy(host.input.host, host.input.port ?? 22)
+      const proxy = await startFreezableTcpProxy(host.input.host, host.input.port ?? 22)
+      opened.push(proxy)
       host.input = { ...host.input, port: proxy.port }
       const { page, seeded, environmentId } = await launchManagedWorkspace(fixture)
       const tabId = await openTerminalTab(page, seeded.worktreeId)
@@ -206,6 +207,6 @@ test('a failed re-pair says why, and the pane stops reconnecting with that verdi
       await page.screenshot({ path: testInfo.outputPath('repair-failed.png') })
     })
   } finally {
-    await proxy?.close()
+    await Promise.all(opened.map((proxy) => proxy.close()))
   }
 })
