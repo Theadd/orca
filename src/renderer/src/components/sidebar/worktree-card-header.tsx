@@ -134,13 +134,14 @@ export function WorktreeCardHeader({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="shrink-0 inline-flex items-center">
-                {isRuntimeDisconnected ? (
+                {onMachine ? (
+                  // Why: a machine keeps its glyph in every state; its chip carries the state.
+                  <Box className="size-3 text-muted-foreground" />
+                ) : isRuntimeDisconnected ? (
                   // Passive by design: runtime ("Orca server") hosts have no
                   // renderer-reachable connect API, unlike the SSH glyph above which is
                   // now a control. Don't "fix" the inconsistency by wiring one up.
                   <ServerOff className="size-3 text-destructive" />
-                ) : onMachine ? (
-                  <Box className="size-3 text-muted-foreground" />
                 ) : (
                   <Server className="size-3 text-muted-foreground" />
                 )}

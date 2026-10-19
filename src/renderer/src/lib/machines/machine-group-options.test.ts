@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { MachineProviderSnapshot, MachineRecord } from '../../../../shared/machine-inventory'
 import { buildMachineGroupOptions, getMachineLocalExpiry } from './machine-group-options'
-import { findMachineForHost, machineTargetKey } from './machine-host-match'
+import { findMachineForHost } from './machine-host-match'
 
 const PROVIDER = 'plugin:omarchy/omarchy' as const
 
@@ -44,7 +44,7 @@ describe('buildMachineGroupOptions', () => {
           record('stored', { state: 'archived' })
         ])
       ],
-      boundMachineKeys: new Set([machineTargetKey({ providerKey: PROVIDER, machineId: 'bound' })])
+      isBound: (_snapshot, machine) => machine.id === 'bound'
     })
     expect(group.machines.map((machine) => machine.name)).toEqual(['bound', 'new', 'old'])
     expect(group.archived.map((machine) => machine.name)).toEqual(['stored'])
@@ -54,7 +54,7 @@ describe('buildMachineGroupOptions', () => {
     const status = (code: NonNullable<MachineProviderSnapshot['lastFailure']>['code']) =>
       buildMachineGroupOptions({
         snapshots: [snapshot([], { lastFailure: { code, message: 'x', at: 1 }, listedAt: 5 })],
-        boundMachineKeys: new Set()
+        isBound: () => false
       })[0].status
     expect(status('auth-required')).toEqual({ kind: 'sign-in' })
     expect(status('context-mismatch')).toEqual({ kind: 'different-account' })

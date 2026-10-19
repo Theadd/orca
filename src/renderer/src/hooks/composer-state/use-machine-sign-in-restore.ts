@@ -1,21 +1,54 @@
 import { useEffect, useMemo, useRef } from 'react'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
 import { signInToMachineProvider } from '@/lib/machines/machine-provider-actions'
 import { useAppStore } from '@/store'
 import type { ComposerMachineSelection } from './composer-machine-selection'
 
+/** What the composer showed when sign-in closed it. */
+export type ComposerSignInSnapshot = {
+  name: string
+  projectId: string | null
+  hostId: ExecutionHostId | null
+  projectHostSetupId: string | null
+  ephemeralVmRecipeId: string | null
+}
+
+/** The composer's opening data, overlaid with what the user had picked and typed since. */
+export function buildComposerReopenData(
+  modalData: Record<string, unknown>,
+  snapshot: ComposerSignInSnapshot
+): Record<string, unknown> {
+  return {
+    ...modalData,
+    prefilledName: snapshot.name,
+    ...(snapshot.projectId && snapshot.hostId
+      ? {
+          initialWorkspaceTarget: {
+            projectId: snapshot.projectId,
+            hostId: snapshot.hostId,
+            projectHostSetupId: snapshot.projectHostSetupId
+          }
+        }
+      : {}),
+    ...(snapshot.ephemeralVmRecipeId
+      ? { initialEphemeralVmRecipeId: snapshot.ephemeralVmRecipeId }
+      : {})
+  }
+}
+
 /**
- * Signing in closes the dialog so the sign-in terminal isn't hidden under it; the modal composer
- * keeps no draft, so this hands sign-in a way back with the typed name and the opening target.
+ * Signing in closes the dialog so the sign-in terminal isn't hidden under it. The modal composer
+ * keeps no draft, so sign-in gets a way back to the same name, project, location and machine.
  */
 export function useMachineSignInRestore(
   machineSelection: ComposerMachineSelection | null | undefined,
   modalData: Record<string, unknown>,
-  name: string
+  snapshot: ComposerSignInSnapshot
 ): ComposerMachineSelection | null {
-  const latest = useRef({ modalData, name })
+  const latest = useRef({ modalData, snapshot, machineSelection })
   useEffect(() => {
-    latest.current = { modalData, name }
-  }, [modalData, name])
+    latest.current = { modalData, snapshot, machineSelection }
+  }, [machineSelection, modalData, snapshot])
 
   return useMemo(() => {
     if (!machineSelection) {
@@ -31,10 +64,22 @@ export function useMachineSignInRestore(
             picker.onProviderAction(action)
             return
           }
-          const reopen = { ...latest.current.modalData, prefilledName: latest.current.name }
-          signInToMachineProvider(action.group.providerKey, () =>
-            useAppStore.getState().openModal('new-workspace-composer', reopen)
-          )
+          const current = latest.current
+          const reopen = buildComposerReopenData(current.modalData, current.snapshot)
+          const chosen = current.machineSelection?.selected?.machine ?? null
+          signInToMachineProvider(action.group.providerKey, () => {
+            const store = useAppStore.getState()
+            store.setComposerMachineRestore(
+              chosen
+                ? {
+                    providerKey: chosen.providerKey,
+                    machineId: chosen.machineId,
+                    environmentId: chosen.environmentId
+                  }
+                : null
+            )
+            store.openModal('new-workspace-composer', reopen)
+          })
         }
       }
     }

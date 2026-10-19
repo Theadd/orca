@@ -46,7 +46,7 @@ function offerComposerReturn(providerName: string, reopenComposer: () => void): 
   toast(
     translate(
       'auto.lib.machines.machineProviderActions.signInStarted',
-      'Finish signing in to {{provider}}, then go back to your worktree.',
+      'Finish signing in to {{provider}}, then go back to your new worktree.',
       { provider: providerName }
     ),
     {

@@ -77,6 +77,8 @@ export type WorktreeCreationRequest = {
     machineId: string
     /** Shown while the machine starts, before any host row knows it. */
     machineName: string
+    /** A paired server's machine: woken through that server, then used at the selected location. */
+    environmentId?: string
   }
   /** Captured from the repo/run owner at submit time so Retry keeps the same
    *  local-vs-runtime progress behavior even if the focused runtime changes. */

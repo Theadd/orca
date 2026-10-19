@@ -30,6 +30,8 @@ function machine(name: string, state: MachineOption['state'] = 'running'): Machi
   return {
     providerKey: PROVIDER,
     machineId: name,
+    environmentId: null,
+    locationKey: null,
     name,
     state,
     lifetime: 'persistent',
@@ -38,8 +40,11 @@ function machine(name: string, state: MachineOption['state'] = 'running'): Machi
 }
 
 const group: MachineGroupOption = {
+  key: PROVIDER,
   providerKey: PROVIDER,
   name: 'Omarchy',
+  environmentId: null,
+  serverName: null,
   status: { kind: 'ready' },
   machines: ['omarchy-dev', 'pr-2231', 'perf-bench', 'gpu-box'].map((name) => machine(name)),
   archived: []

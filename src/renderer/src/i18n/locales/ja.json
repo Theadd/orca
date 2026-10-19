@@ -1141,7 +1141,7 @@
           "noServer": "Orca は {{name}} でサーバーを起動できませんでした。プロジェクトの準備にはサーバーが必要です。"
         },
         "machineProviderActions": {
-          "signInStarted": "{{provider}} へのサインインを完了してから、ワークツリーに戻ってください。",
+          "signInStarted": "{{provider}} へのサインインを完了してから、新しいワークツリーに戻ってください。",
           "backToComposer": "新しいワークツリーに戻る"
         }
       }
@@ -3483,7 +3483,9 @@
             "disconnectedTitle": "リモートランタイムが切断されました",
             "retryingBody": "Orca は自動的に再試行します。接続が復元されると、このターミナルが再開されます。",
             "disconnectedBody": "自動再試行が停止しました。このターミナルセッションを再開するには再接続してください。",
-            "reconnectButton": "再接続"
+            "reconnectButton": "再接続",
+            "wakingTitle": "{{name}} を起動中…",
+            "wakingBody": "マシンが起動するとこのターミナルは再開します。"
           },
           "TerminalLinkActionPopover": {
             "openLink": "リンクを開く",
@@ -14600,7 +14602,9 @@
             "signIn": "{{provider}} にサインイン",
             "retry": "{{provider}} を再試行",
             "showDetails": "詳細を表示",
-            "noMachines": "マシンなし"
+            "noMachines": "マシンなし",
+            "signInOnServer": "{{server}} でサインインが必要です",
+            "noLocation": "ここではプロジェクト未設定"
           },
           "RunTargetRowList": {
             "sshHosts": "SSH ホスト",

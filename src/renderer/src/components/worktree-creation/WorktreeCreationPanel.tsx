@@ -10,6 +10,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { translate } from '@/i18n/i18n'
 import WorktreeCreationTabStrip from './WorktreeCreationTabStrip'
+import { useTerminalSurfaceBackground } from '@/components/terminal-pane/use-terminal-surface-background'
 import CreationOutputLog from './CreationOutputLog'
 import MachineCreationStatus from './MachineCreationStatus'
 
@@ -32,6 +33,7 @@ export default function WorktreeCreationPanel({
   const entry = useAppStore((s) => s.pendingWorktreeCreations[creationId])
   const [now, setNow] = React.useState(() => Date.now())
   const progressLabelId = React.useId()
+  const terminalBackground = useTerminalSurfaceBackground()
   // Why: depend on the primitive status only — provisioning appends a log to the
   // entry on every stderr chunk, giving a fresh `entry` reference each tick that
   // would otherwise tear down and recreate this interval before it can fire.
@@ -69,7 +71,15 @@ export default function WorktreeCreationPanel({
       {/* Body: a quiet top-left annotation on the surface the terminal will
           fill — the same spot terminal output appears — so creation → terminal
           reads as one frame filling in. */}
-      <div className="min-h-0 flex-1 p-3">
+      {/* Why: a machine's setup hands off to its terminal, so it sits on the terminal's colour. */}
+      <div
+        className="min-h-0 flex-1 p-3"
+        style={
+          entry.request.machine && terminalBackground
+            ? { backgroundColor: terminalBackground }
+            : undefined
+        }
+      >
         {entry.request.machine ? (
           <MachineCreationStatus
             entry={entry}

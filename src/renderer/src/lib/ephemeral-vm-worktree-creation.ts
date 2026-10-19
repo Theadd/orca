@@ -10,7 +10,7 @@ import {
   appendProvisioningLog,
   appendProvisioningWarnings
 } from '@/lib/pending-creation-provisioning-log'
-import { prepareMachineRequest } from '@/lib/machine-worktree-creation'
+import { prepareMachineRequest } from '@/lib/machines/machine-worktree-creation'
 import { getPortableBaseSelection } from '@/lib/portable-base-selection'
 
 /** Provisions whatever remote target the request still needs before the worktree is created. */

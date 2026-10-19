@@ -45,6 +45,7 @@ import { buildQuickComposerStartup } from './quick-startup-plan'
 import { buildQuickCreationRequest, type QuickSubmitOptions } from './quick-creation-request'
 import type { PendingSmartGitHubSubmitResolution } from './source-selection-decisions'
 import { resolveAgentSessionLaunchRoute } from '@/lib/agent-session-launch-plan'
+import { buildMachineCreationRequest } from './composer-machine-selection'
 
 export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
   const {
@@ -163,16 +164,11 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
       const activeEphemeralVmRecipeId = ephemeralVmsEnabled ? selectedEphemeralVmRecipeId : null
 
       const machine =
-        ephemeralVmsEnabled &&
-        machineSelection?.selected &&
-        selectedWorkspaceTarget.status === 'ready'
-          ? {
+        ephemeralVmsEnabled && machineSelection && selectedWorkspaceTarget.status === 'ready'
+          ? buildMachineCreationRequest(machineSelection.selected, {
               sourceRepoId: repoId,
-              projectId: selectedWorkspaceTarget.target.projectId,
-              providerKey: machineSelection.selected.machine.providerKey,
-              machineId: machineSelection.selected.machine.machineId,
-              machineName: machineSelection.selected.machine.name
-            }
+              projectId: selectedWorkspaceTarget.target.projectId
+            })
           : undefined
 
       if (!machine && activeEphemeralVmRecipeId && selectedWorkspaceTarget.status === 'ready') {
@@ -196,7 +192,7 @@ export function useQuickCreationExecution(input: QuickCreationExecutionInput) {
               kind: selectedRepoIsGit ? 'git-worktree' : 'folder',
               repoId,
               executionHostId:
-                ephemeralVmRecipe || machine
+                ephemeralVmRecipe || (machine && !machine.environmentId)
                   ? 'runtime:pending-ephemeral-vm'
                   : (workspaceRunContext?.hostId ?? selectedRepoExecutionHostId ?? undefined)
             },

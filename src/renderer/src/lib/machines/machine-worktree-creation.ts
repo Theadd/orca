@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
-import type { ExecutionHostId } from '../../../shared/execution-host'
-import type { ProjectHostSetupResult } from '../../../shared/project-types'
+import type { ExecutionHostId } from '../../../../shared/execution-host'
+import type { ProjectHostSetupResult } from '../../../../shared/project-types'
 import { useAppStore } from '@/store'
 import type { WorktreeCreationRequest } from '@/lib/pending-worktree-creation'
 import { appendProvisioningLog } from '@/lib/pending-creation-provisioning-log'
@@ -13,6 +13,8 @@ import { createBrowserUuid } from '@/lib/browser-uuid'
 import { resolveProjectCloneUrlPrefill } from '@/lib/project-clone-url-prefill'
 import { getPortableBaseSelection } from '@/lib/portable-base-selection'
 import { translate } from '@/i18n/i18n'
+import { wakeMachine } from '@/lib/machines/machine-wake'
+import { describeMachineFailure } from '@/lib/machines/machine-copy'
 
 type MachineRequest = NonNullable<WorktreeCreationRequest['machine']>
 
@@ -34,6 +36,40 @@ function fail(creationId: string, error: string, detail?: string): null {
     toast.error(error)
   }
   return null
+}
+
+/** A paired server's machine runs at the location already chosen; it only needs waking. */
+async function wakePairedMachine(
+  creationId: string,
+  request: WorktreeCreationRequest,
+  machine: MachineRequest,
+  environmentId: string
+): Promise<WorktreeCreationRequest | null> {
+  useAppStore
+    .getState()
+    .updatePendingWorktreeCreation(creationId, { machineProgress: { activity: 'waking' } })
+  const woken = await wakeMachine(
+    { providerKey: machine.providerKey, machineId: machine.machineId },
+    { environmentId }
+  ).catch((error: unknown) => ({
+    ok: false as const,
+    code: 'unavailable' as const,
+    message: error instanceof Error ? error.message : String(error)
+  }))
+  if (!stillPending(creationId)) {
+    return null
+  }
+  if (!woken.ok) {
+    return fail(
+      creationId,
+      `${translate('auto.lib.machines.machineStart.wakeFailed', 'Couldn’t wake {{name}}.', {
+        name: machine.machineName
+      })} ${describeMachineFailure(woken.code)}`,
+      woken.message
+    )
+  }
+  useAppStore.getState().updatePendingWorktreeCreation(creationId, { phase: 'fetching' })
+  return request
 }
 
 /** Reuses the project's location on the machine, or clones it into the provider's project root. */
@@ -95,11 +131,15 @@ export async function prepareMachineRequest(
   request: WorktreeCreationRequest,
   machine: MachineRequest
 ): Promise<WorktreeCreationRequest | null> {
+  // Why: the first stage names its activity only once the machine's state is known.
   useAppStore.getState().updatePendingWorktreeCreation(creationId, {
     phase: 'starting-machine',
     provisioningLog: '',
-    machineProgress: { activity: 'connecting' }
+    machineProgress: undefined
   })
+  if (machine.environmentId) {
+    return wakePairedMachine(creationId, request, machine, machine.environmentId)
+  }
   const operationId = createBrowserUuid()
   const unsubscribe = subscribeMachineProgress(operationId, (chunk) =>
     appendProvisioningLog(creationId, chunk)

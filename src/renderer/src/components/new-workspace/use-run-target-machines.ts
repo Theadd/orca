@@ -1,5 +1,9 @@
 import { useCallback, useState } from 'react'
-import type { MachineGroupOption, MachineOption } from '@/lib/machines/machine-group-options'
+import {
+  isMachineOptionPickable,
+  type MachineGroupOption,
+  type MachineOption
+} from '@/lib/machines/machine-group-options'
 import {
   machineRowKey,
   type MachineGroupView,
@@ -55,17 +59,20 @@ export function useRunTargetMachines(machines: RunTargetMachineProps | undefined
         case 'machine-group':
           return
         case 'machine':
+          if (!isMachineOptionPickable(row.machine)) {
+            return
+          }
           onChange?.(row.machine)
           close()
           return
         case 'machine-more':
-          updateView(row.group.providerKey, (view) => ({
+          updateView(row.group.key, (view) => ({
             expanded: !view.expanded,
             archivedOpen: view.expanded ? false : view.archivedOpen
           }))
           return
         case 'machine-archived':
-          updateView(row.group.providerKey, (view) => ({
+          updateView(row.group.key, (view) => ({
             ...view,
             archivedOpen: !view.archivedOpen
           }))

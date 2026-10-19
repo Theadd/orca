@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 import type { MachineProviderErrorCode } from '../../../../shared/machine-provider-protocol'
 import { getMachineSources } from '@/store/machines'
+import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { machineNeedsWake } from './machine-display-state'
 import { describeMachineFailure } from './machine-copy'
@@ -27,9 +28,13 @@ async function wakeAndConnect(match: MachineMatch): Promise<WakeOutcome> {
 
 /**
  * Opening a worktree whose machine sleeps (or is archived) wakes it once; repeat opens while the
- * wake runs join it. Navigation never waits on this.
+ * wake runs join it. Navigation never waits on this. A worktree with terminals names the wake in
+ * their reconnect banner; one without gets a toast, so the wake is announced in one place.
  */
-export function wakeMachineForHost(hostId: string | null | undefined): Promise<void> {
+export function wakeMachineForHost(
+  hostId: string | null | undefined,
+  worktreeId?: string
+): Promise<void> {
   const match = findMachineForHost(hostId, getMachineSources())
   if (!match || !machineNeedsWake(match.machine.state)) {
     return Promise.resolve()
@@ -43,16 +48,23 @@ export function wakeMachineForHost(hostId: string | null | undefined): Promise<v
     return existing
   }
   const name = match.machine.name
-  const toastId = toast.loading(
-    translate('auto.lib.machines.machineWakeOnOpen.waking', 'Waking {{name}}…', { name })
-  )
+  const store = useAppStore.getState()
+  const hasTerminals = worktreeId ? (store.tabsByWorktree[worktreeId]?.length ?? 0) > 0 : false
+  const toastId = hasTerminals
+    ? undefined
+    : toast.loading(
+        translate('auto.lib.machines.machineWakeOnOpen.waking', 'Waking {{name}}…', { name })
+      )
+  if (worktreeId) {
+    store.setWorktreeMachineWaking(worktreeId, name)
+  }
   const reportFailure = (code: MachineProviderErrorCode | null): void => {
     toast.error(
       translate('auto.lib.machines.machineWakeOnOpen.wakeFailed', 'Couldn’t wake {{name}}', {
         name
       }),
       {
-        id: toastId,
+        ...(toastId !== undefined ? { id: toastId } : {}),
         description: code
           ? describeMachineFailure(code)
           : translate(
@@ -65,13 +77,20 @@ export function wakeMachineForHost(hostId: string | null | undefined): Promise<v
   const run = wakeAndConnect(match)
     .then((outcome) => {
       if (outcome.ok) {
-        toast.dismiss(toastId)
+        if (toastId !== undefined) {
+          toast.dismiss(toastId)
+        }
       } else {
         reportFailure(outcome.code)
       }
     })
     .catch(() => reportFailure(null))
-    .finally(() => opensInFlight.delete(key))
+    .finally(() => {
+      opensInFlight.delete(key)
+      if (worktreeId) {
+        useAppStore.getState().setWorktreeMachineWaking(worktreeId, null)
+      }
+    })
   opensInFlight.set(key, run)
   return run
 }

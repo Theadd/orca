@@ -155,10 +155,26 @@ function QuickTabBody({
     ...(modalData.telemetrySource ? { telemetrySource: modalData.telemetrySource } : {}),
     enableIssueAutomation: modalData.enableIssueAutomation === true
   })
+  const signInSnapshot = useMemo(
+    () => ({
+      name: cardProps.name,
+      projectId: cardProps.selectedProjectId ?? null,
+      hostId: cardProps.selectedRepoExecutionHostId ?? null,
+      projectHostSetupId: cardProps.selectedProjectHostSetupId ?? null,
+      ephemeralVmRecipeId: cardProps.selectedEphemeralVmRecipeId ?? null
+    }),
+    [
+      cardProps.name,
+      cardProps.selectedEphemeralVmRecipeId,
+      cardProps.selectedProjectHostSetupId,
+      cardProps.selectedProjectId,
+      cardProps.selectedRepoExecutionHostId
+    ]
+  )
   const machineSelection = useMachineSignInRestore(
     cardProps.machineSelection,
     modalData,
-    cardProps.name
+    signInSnapshot
   )
   // Why: the composer's built-in `onOpenAgentSettings` handler navigates to
   // the settings page and closes the modal. For the quick-create flow we want

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MachineRecord } from '../../../shared/machine-inventory'
-import type { PendingWorktreeCreation, WorktreeCreationRequest } from './pending-worktree-creation'
+import type { MachineRecord } from '../../../../shared/machine-inventory'
+import type {
+  PendingWorktreeCreation,
+  WorktreeCreationRequest
+} from '@/lib/pending-worktree-creation'
 
 const PROVIDER = 'plugin:omarchy/omarchy' as const
 
@@ -36,6 +39,8 @@ const store: StoreFixture = {
 
 vi.mock('@/store', () => ({ useAppStore: { getState: () => store } }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }))
+const rpc = vi.hoisted(() => ({ call: vi.fn() }))
+vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc: rpc.call }))
 vi.mock('@/lib/project-clone-url-prefill', () => ({
   resolveProjectCloneUrlPrefill: () => 'git@github.com:acme/web.git'
 }))
@@ -265,5 +270,20 @@ describe('prepareMachineRequest', () => {
 
     expect(await prepareMachineRequest('creation-1', REQUEST, MACHINE)).toBeNull()
     expect(store.setupProjectClone).not.toHaveBeenCalled()
+  })
+
+  it('wakes a paired server’s machine through that server and keeps the chosen location', async () => {
+    rpc.call.mockResolvedValue({ ok: true, value: record() })
+    const machine = { ...MACHINE, environmentId: 'env-2' }
+
+    const prepared = await prepareMachineRequest('creation-1', { ...REQUEST, machine }, machine)
+
+    expect(rpc.call).toHaveBeenCalledWith(
+      { kind: 'environment', environmentId: 'env-2' },
+      'machines.wake',
+      { providerKey: PROVIDER, machineId: 'box-1' }
+    )
+    expect(machines.connect).not.toHaveBeenCalled()
+    expect(prepared?.repoId).toBe('repo-local')
   })
 })

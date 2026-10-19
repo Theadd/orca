@@ -25,7 +25,7 @@ describe('signInToMachineProvider', () => {
 
     expect(mocks.state.closeModal).toHaveBeenCalled()
     const [message, options] = mocks.toast.mock.calls[0]
-    expect(message).toBe('Finish signing in to Omarchy, then go back to your worktree.')
+    expect(message).toBe('Finish signing in to Omarchy, then go back to your new worktree.')
     options.action.onClick()
     expect(reopen).toHaveBeenCalled()
   })

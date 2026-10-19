@@ -1321,7 +1321,7 @@
           "noServer": "Orca couldn’t start its server on {{name}}, which it needs to set up the project."
         },
         "machineProviderActions": {
-          "signInStarted": "Finish signing in to {{provider}}, then go back to your worktree.",
+          "signInStarted": "Finish signing in to {{provider}}, then go back to your new worktree.",
           "backToComposer": "Back to new worktree"
         }
       }
@@ -3732,7 +3732,9 @@
             "disconnectedTitle": "Remote runtime disconnected",
             "retryingBody": "Orca is retrying automatically. This terminal will resume if the connection returns.",
             "disconnectedBody": "Automatic retries stopped. Reconnect to resume this terminal session.",
-            "reconnectButton": "Reconnect"
+            "reconnectButton": "Reconnect",
+            "wakingTitle": "Waking {{name}}…",
+            "wakingBody": "This terminal resumes once the machine is running."
           },
           "TerminalQuickCommandsSubmenu": {
             "3ccc7981bb": "Host unavailable",
@@ -14874,7 +14876,9 @@
             "signIn": "Sign in to {{provider}}",
             "retry": "Retry {{provider}}",
             "showDetails": "Show details",
-            "noMachines": "No machines"
+            "noMachines": "No machines",
+            "signInOnServer": "Needs sign-in on {{server}}",
+            "noLocation": "Project not set up here"
           },
           "RunTargetRowList": {
             "sshHosts": "SSH hosts",

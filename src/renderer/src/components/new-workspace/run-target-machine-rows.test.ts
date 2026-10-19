@@ -8,6 +8,8 @@ function machine(name: string, overrides: Partial<MachineOption> = {}): MachineO
   return {
     providerKey: PROVIDER,
     machineId: name,
+    environmentId: null,
+    locationKey: null,
     name,
     state: 'running',
     lifetime: 'persistent',
@@ -18,8 +20,11 @@ function machine(name: string, overrides: Partial<MachineOption> = {}): MachineO
 
 function group(overrides: Partial<MachineGroupOption> = {}): MachineGroupOption {
   return {
+    key: PROVIDER,
     providerKey: PROVIDER,
     name: 'Omarchy',
+    environmentId: null,
+    serverName: null,
     status: { kind: 'ready' },
     machines: ['a', 'b', 'c', 'd', 'e'].map((name) => machine(name)),
     archived: [machine('old', { state: 'archived' })],
@@ -136,5 +141,23 @@ describe('buildMachineRows', () => {
       views: {}
     })
     expect(summarize(rows)).toEqual(['machine-group', 'machine-details'])
+  })
+
+  it('leaves a paired server’s account fixes to that server', () => {
+    const remote = { environmentId: 'env-2', serverName: 'build-box', key: 'env-2/omarchy' }
+    for (const kind of ['sign-in', 'invalid-response'] as const) {
+      const rows = buildMachineRows({
+        groups: [group({ ...remote, status: { kind } })],
+        query: '',
+        views: {}
+      })
+      expect(summarize(rows)).toEqual(['machine-group'])
+    }
+    const unreachable = buildMachineRows({
+      groups: [group({ ...remote, status: { kind: 'unreachable', lastSeenAt: 1 } })],
+      query: '',
+      views: {}
+    })
+    expect(summarize(unreachable)).not.toContain('machine-retry')
   })
 })

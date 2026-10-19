@@ -12,7 +12,10 @@ import {
 import { translate } from '@/i18n/i18n'
 import { MachineStateLabel } from '@/components/machines/MachineStateLabel'
 import { formatMachineExpiry, formatProviderUnreachable } from '@/lib/machines/machine-copy'
-import type { MachineGroupOption } from '@/lib/machines/machine-group-options'
+import {
+  isMachineOptionPickable,
+  type MachineGroupOption
+} from '@/lib/machines/machine-group-options'
 import { RunTargetGroupHeader, RunTargetRow } from './RunTargetComboboxRow'
 import type { MachineRowModel } from './run-target-machine-rows'
 
@@ -37,8 +40,19 @@ function groupAside(group: MachineGroupOption, now: number): string | null {
         ? translate('auto.components.new.workspace.RunTargetMachineRow.noMachines', 'No machines')
         : null
     case 'sign-in':
-      return null
+      return group.environmentId === null
+        ? null
+        : translate(
+            'auto.components.new.workspace.RunTargetMachineRow.signInOnServer',
+            'Needs sign-in on {{server}}',
+            { server: group.serverName ?? '' }
+          )
   }
+}
+
+/** "Omarchy", or "Omarchy · build-box" for a paired server's provider. */
+export function machineGroupLabel(group: MachineGroupOption): string {
+  return group.serverName ? `${group.name} · ${group.serverName}` : group.name
 }
 
 /** A provider's label inside the run-target list; labels its group, never armed. */
@@ -51,7 +65,9 @@ export function RunTargetMachineGroupHeader({
   group: MachineGroupOption
   now: number
 }): React.JSX.Element {
-  return <RunTargetGroupHeader id={id} label={group.name} aside={groupAside(group, now)} />
+  return (
+    <RunTargetGroupHeader id={id} label={machineGroupLabel(group)} aside={groupAside(group, now)} />
+  )
 }
 
 function rowContent(row: Exclude<MachineRowModel, { kind: 'machine-group' }>): {
@@ -66,15 +82,22 @@ function rowContent(row: Exclude<MachineRowModel, { kind: 'machine-group' }>): {
     case 'machine': {
       const { machine } = row
       const archived = machine.state === 'archived'
+      const pickable = isMachineOptionPickable(machine)
+      const expiry =
+        machine.lifetime === 'temporary' && machine.expiresAt !== null
+          ? formatMachineExpiry(machine.expiresAt)
+          : ''
       return {
         icon: archived ? <Archive className={ICON} /> : <Box className={ICON} />,
         label: machine.name,
-        detail:
-          machine.lifetime === 'temporary' && machine.expiresAt !== null
-            ? formatMachineExpiry(machine.expiresAt)
-            : '',
+        detail: pickable
+          ? expiry
+          : translate(
+              'auto.components.new.workspace.RunTargetMachineRow.noLocation',
+              'Project not set up here'
+            ),
         status: <MachineStateLabel state={machine.state} />,
-        dimmed: archived || machine.state === 'unreachable'
+        dimmed: archived || machine.state === 'unreachable' || !pickable
       }
     }
     case 'machine-more':

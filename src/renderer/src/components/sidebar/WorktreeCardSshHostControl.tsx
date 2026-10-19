@@ -143,7 +143,8 @@ export function WorktreeCardSshHostControl({
   // A live connection outranks a stale removal tombstone. A null status is a runtime-owned
   // target: no renderer-reachable connect, and the card has always shown the plain host glyph
   // there rather than a false disconnected state.
-  if (status === null || status === 'connected') {
+  // A machine's host is woken and reconnected through the machine, so it never offers Connect.
+  if (onMachine || status === null || status === 'connected') {
     return (
       <PassiveGlyph
         targetLabel={targetLabel}

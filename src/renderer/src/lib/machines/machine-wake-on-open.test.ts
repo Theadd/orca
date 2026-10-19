@@ -5,17 +5,29 @@ import type { MachineSources } from './machine-host-match'
 const PROVIDER = 'plugin:omarchy/omarchy' as const
 
 const mocks = vi.hoisted(() => {
-  const state: { sources: MachineSources | null } = { sources: null }
+  const state: {
+    sources: MachineSources | null
+    tabsByWorktree: Record<string, unknown[]>
+  } = { sources: null, tabsByWorktree: {} }
   return {
     state,
     callRuntimeRpc: vi.fn(),
     toastError: vi.fn(),
     toastLoading: vi.fn(() => 'toast-1'),
-    toastDismiss: vi.fn()
+    toastDismiss: vi.fn(),
+    setWaking: vi.fn()
   }
 })
 
 vi.mock('@/store/machines', () => ({ getMachineSources: () => mocks.state.sources }))
+vi.mock('@/store', () => ({
+  useAppStore: {
+    getState: () => ({
+      tabsByWorktree: mocks.state.tabsByWorktree,
+      setWorktreeMachineWaking: mocks.setWaking
+    })
+  }
+}))
 vi.mock('@/runtime/runtime-rpc-client', () => ({ callRuntimeRpc: mocks.callRuntimeRpc }))
 vi.mock('sonner', () => ({
   toast: { error: mocks.toastError, loading: mocks.toastLoading, dismiss: mocks.toastDismiss }
@@ -118,5 +130,17 @@ describe('wakeMachineForHost', () => {
       id: 'toast-1',
       description: 'The provider didn’t answer in time.'
     })
+  })
+
+  it('names the wake in the open terminals’ banner instead of a second toast', async () => {
+    mocks.state.sources = { self: [snapshot({})], environments: {} }
+    mocks.state.tabsByWorktree = { 'wt-1': [{}] }
+
+    await wakeMachineForHost('ssh:machine-a', 'wt-1')
+
+    expect(mocks.toastLoading).not.toHaveBeenCalled()
+    expect(mocks.setWaking).toHaveBeenNthCalledWith(1, 'wt-1', 'omarchy-dev')
+    expect(mocks.setWaking).toHaveBeenLastCalledWith('wt-1', null)
+    mocks.state.tabsByWorktree = {}
   })
 })

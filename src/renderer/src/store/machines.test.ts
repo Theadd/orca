@@ -96,3 +96,14 @@ describe('ensureMachinesLoaded', () => {
     vi.unstubAllGlobals()
   })
 })
+
+describe('machines slice', () => {
+  it('keeps the held inventory when a re-list changed nothing', () => {
+    useAppStore.getState().applyMachineSnapshot(snapshot(1))
+    const held = useAppStore.getState().machineProviders['plugin:p/omarchy']
+    useAppStore.getState().applyMachineSnapshot(snapshot(2))
+    expect(useAppStore.getState().machineProviders['plugin:p/omarchy']).toBe(held)
+    useAppStore.getState().applyMachineSnapshot({ ...snapshot(3), name: 'Renamed' })
+    expect(useAppStore.getState().machineProviders['plugin:p/omarchy']?.name).toBe('Renamed')
+  })
+})

@@ -1140,7 +1140,7 @@
           "noServer": "Orca no pudo iniciar su servidor en {{name}}, que necesita para configurar el proyecto."
         },
         "machineProviderActions": {
-          "signInStarted": "Termina de iniciar sesión en {{provider}} y vuelve a tu worktree.",
+          "signInStarted": "Termina de iniciar sesión en {{provider}} y vuelve a tu nuevo worktree.",
           "backToComposer": "Volver al nuevo worktree"
         }
       }
@@ -3478,7 +3478,9 @@
             "disconnectedTitle": "Remote runtime disconnected",
             "retryingBody": "Orca está reintentando automáticamente. Este terminal se reanudará si vuelve la conexión.",
             "disconnectedBody": "Automatic retries stopped. Reconnect to resume this terminal session.",
-            "reconnectButton": "Reconnect"
+            "reconnectButton": "Reconnect",
+            "wakingTitle": "Activando {{name}}…",
+            "wakingBody": "Este terminal se reanudará cuando la máquina esté en ejecución."
           },
           "TerminalRestoringPlaceholder": {
             "restoring": "Restaurando terminal…"
@@ -14595,7 +14597,9 @@
             "signIn": "Iniciar sesión en {{provider}}",
             "retry": "Reintentar {{provider}}",
             "showDetails": "Mostrar detalles",
-            "noMachines": "Sin máquinas"
+            "noMachines": "Sin máquinas",
+            "signInOnServer": "Requiere iniciar sesión en {{server}}",
+            "noLocation": "Proyecto sin configurar aquí"
           },
           "RunTargetRowList": {
             "sshHosts": "Hosts SSH",

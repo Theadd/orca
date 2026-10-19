@@ -108,6 +108,9 @@ describe('sidebar worktree activation', () => {
 
     await activateWorktreeFromSidebar('folder:folder-workspace-2')
 
-    expect(mocks.wakeMachineForHost).toHaveBeenCalledWith('ssh:machine-a')
+    expect(mocks.wakeMachineForHost).toHaveBeenCalledWith(
+      'ssh:machine-a',
+      'folder:folder-workspace-2'
+    )
   })
 })

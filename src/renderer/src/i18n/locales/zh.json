@@ -1141,7 +1141,7 @@
           "noServer": "Orca 无法在 {{name}} 上启动其服务器，而设置项目需要该服务器。"
         },
         "machineProviderActions": {
-          "signInStarted": "完成 {{provider}} 登录后，返回你的工作树。",
+          "signInStarted": "完成 {{provider}} 登录后，返回你的新工作树。",
           "backToComposer": "返回新建工作树"
         }
       }
@@ -3483,7 +3483,9 @@
             "disconnectedTitle": "远程运行时已断开连接",
             "retryingBody": "Orca 正在自动重试。如果连接恢复，此终端将恢复。",
             "disconnectedBody": "自动重试已停止。重新连接以恢复此终端会话。",
-            "reconnectButton": "重新连接"
+            "reconnectButton": "重新连接",
+            "wakingTitle": "正在唤醒 {{name}}…",
+            "wakingBody": "机器运行后此终端将恢复。"
           },
           "TerminalLinkActionPopover": {
             "openLink": "打开链接",
@@ -14600,7 +14602,9 @@
             "signIn": "登录 {{provider}}",
             "retry": "重试 {{provider}}",
             "showDetails": "显示详情",
-            "noMachines": "没有机器"
+            "noMachines": "没有机器",
+            "signInOnServer": "需要在 {{server}} 上登录",
+            "noLocation": "此处未设置项目"
           },
           "RunTargetRowList": {
             "sshHosts": "SSH 主机",

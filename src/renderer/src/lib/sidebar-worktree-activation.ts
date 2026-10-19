@@ -24,7 +24,8 @@ export async function activateWorktreeFromSidebar(
     })
     if (hasMachineProviders()) {
       await wakeMachineForHost(
-        executionHostId ?? getFolderWorkspaceHostIdById(workspaceScope.folderWorkspaceId)
+        executionHostId ?? getFolderWorkspaceHostIdById(workspaceScope.folderWorkspaceId),
+        worktreeId
       )
     }
     return
@@ -40,7 +41,7 @@ export async function activateWorktreeFromSidebar(
     resumeEphemeralVmWorkspace(worktreeId),
     // Why: skip the host lookup entirely for the common case of no machine providers.
     hasMachineProviders()
-      ? wakeMachineForHost(executionHostId ?? getWorktreeHostId(worktreeId))
+      ? wakeMachineForHost(executionHostId ?? getWorktreeHostId(worktreeId), worktreeId)
       : undefined
   ])
 }

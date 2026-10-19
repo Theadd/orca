@@ -1,5 +1,8 @@
-import type { MachineGroupOption, MachineOption } from '@/lib/machines/machine-group-options'
-import { machineTargetKey } from '@/lib/machines/machine-host-match'
+import {
+  machineOptionKey,
+  type MachineGroupOption,
+  type MachineOption
+} from '@/lib/machines/machine-group-options'
 
 /** Rows shown per provider before "Show all". */
 export const MACHINE_GROUP_ROW_CAP = 3
@@ -15,8 +18,10 @@ export type MachineRowModel =
   | { key: string; kind: 'machine-retry'; group: MachineGroupOption }
   | { key: string; kind: 'machine-details'; group: MachineGroupOption }
 
-export function machineRowKey(machine: Pick<MachineOption, 'providerKey' | 'machineId'>): string {
-  return `machine:${machineTargetKey(machine)}`
+export function machineRowKey(
+  machine: Pick<MachineOption, 'environmentId' | 'providerKey' | 'machineId'>
+): string {
+  return `machine:${machineOptionKey(machine)}`
 }
 
 function machineRow(group: MachineGroupOption, machine: MachineOption): MachineRowModel {
@@ -24,21 +29,27 @@ function machineRow(group: MachineGroupOption, machine: MachineOption): MachineR
 }
 
 function groupRows(group: MachineGroupOption, view: MachineGroupView): MachineRowModel[] {
-  const key = group.providerKey
+  const key = group.key
   const header: MachineRowModel = { key: `machine-group:${key}`, kind: 'machine-group', group }
+  // Why: a paired server's account and retries belong to that server; its header says why.
+  const remote = group.environmentId !== null
   switch (group.status.kind) {
     case 'sign-in':
     case 'different-account':
-      return [header, { key: `machine-sign-in:${key}`, kind: 'machine-sign-in', group }]
+      return remote
+        ? [header]
+        : [header, { key: `machine-sign-in:${key}`, kind: 'machine-sign-in', group }]
     case 'invalid-response':
-      return [header, { key: `machine-details:${key}`, kind: 'machine-details', group }]
+      return remote
+        ? [header]
+        : [header, { key: `machine-details:${key}`, kind: 'machine-details', group }]
     case 'unreachable':
       return [
         header,
         ...group.machines
           .slice(0, MACHINE_GROUP_ROW_CAP)
           .map((machine) => machineRow(group, machine)),
-        { key: `machine-retry:${key}`, kind: 'machine-retry', group }
+        ...(remote ? [] : [{ key: `machine-retry:${key}`, kind: 'machine-retry' as const, group }])
       ]
     case 'ready':
       break
@@ -72,7 +83,7 @@ function searchRows(group: MachineGroupOption, query: string): MachineRowModel[]
   const found = [...group.machines.filter(matches), ...group.archived.filter(matches)]
   const rows = found.map((machine) => machineRow(group, machine))
   return rows.length > 0
-    ? [{ key: `machine-group:${group.providerKey}`, kind: 'machine-group', group }, ...rows]
+    ? [{ key: `machine-group:${group.key}`, kind: 'machine-group', group }, ...rows]
     : []
 }
 
@@ -90,6 +101,6 @@ export function buildMachineRows({
   return groups.flatMap((group) =>
     trimmed
       ? searchRows(group, trimmed)
-      : groupRows(group, views[group.providerKey] ?? { expanded: false, archivedOpen: false })
+      : groupRows(group, views[group.key] ?? { expanded: false, archivedOpen: false })
   )
 }
