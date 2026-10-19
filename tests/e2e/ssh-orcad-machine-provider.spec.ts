@@ -91,8 +91,14 @@ test('runs a provider machine through create, connect, sleep, wake and delete', 
     )
     expect(deleted.state).toBe('gone')
     expect(provider.containerFor(machine.id)).toBeNull()
-    // Nothing in this profile runs on the deleted machine, so the next list prunes its gone row.
-    expect((await machineSnapshot(orcaPage))?.machines).toEqual([])
+    // Its managed server is still saved, so the row stays as its worktrees' Gone link.
+    expect((await machineSnapshot(orcaPage))?.machines).toEqual([
+      expect.objectContaining({
+        id: machine.id,
+        state: 'gone',
+        managedEnvironmentId: expect.any(String)
+      })
+    ])
   } finally {
     provider?.cleanup()
   }
