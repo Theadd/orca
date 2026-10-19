@@ -42,6 +42,8 @@ export type MachineGroupOption = {
   /** Live machines, bound to this project first, then most recent. */
   machines: readonly MachineOption[]
   archived: readonly MachineOption[]
+  /** Only this app's providers create; a paired server's creates stay on that server. */
+  canCreate: boolean
 }
 
 /** Local epoch ms of `expiresAt`, corrected for the provider's clock. */
@@ -148,7 +150,9 @@ export function buildMachineGroupOptions({
       serverName: environment?.name ?? null,
       status: groupStatus(snapshot),
       machines: ordered.filter((machine) => machine.state !== 'archived').map(option),
-      archived: ordered.filter((machine) => machine.state === 'archived').map(option)
+      archived: ordered.filter((machine) => machine.state === 'archived').map(option),
+      canCreate:
+        environmentId === null && (snapshot.capabilities?.verbs.includes('create') ?? false)
     }
   })
 }

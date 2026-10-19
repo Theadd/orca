@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
 import type { MachineProviderSnapshot } from '../../../../shared/machine-inventory'
 import type { MachineChoice } from '@/lib/machines/machine-group-options'
+import type { MachineCreateDraft } from '@/lib/machines/machine-create-draft'
 import type { AppState } from '../types'
 
 export type MachinesSlice = {
@@ -13,6 +14,9 @@ export type MachinesSlice = {
   setWorktreeMachineWaking: (worktreeId: string, machineName: string | null) => void
   /** The machine a composer had chosen when sign-in closed it; read once when it reopens. */
   composerMachineRestore: MachineChoice | null
+  /** The new-machine draft a composer had when sign-in closed it; read once when it reopens. */
+  composerDraftRestore: MachineCreateDraft | null
+  setComposerDraftRestore: (draft: MachineCreateDraft | null) => void
   setComposerMachineRestore: (choice: MachineChoice | null) => void
   applyMachineSnapshot: (snapshot: MachineProviderSnapshot) => void
   setMachineEnvironmentSnapshots: (
@@ -56,6 +60,8 @@ export const createMachinesSlice: StateCreator<AppState, [], [], MachinesSlice> 
       return { wakingMachineByWorktreeId: next }
     }),
   composerMachineRestore: null,
+  composerDraftRestore: null,
+  setComposerDraftRestore: (composerDraftRestore) => set({ composerDraftRestore }),
   setComposerMachineRestore: (composerMachineRestore) => set({ composerMachineRestore }),
   applyMachineSnapshot: (snapshot) =>
     set((state) =>

@@ -59,6 +59,7 @@ function sectionOf(row: SelectableRunTargetRow): 'machines' | 'hosts' | null {
     case 'machine':
     case 'machine-more':
     case 'machine-archived':
+    case 'machine-create':
     case 'machine-sign-in':
     case 'machine-retry':
     case 'machine-details':
