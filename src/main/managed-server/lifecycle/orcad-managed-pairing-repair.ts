@@ -156,6 +156,12 @@ export class ManagedOrcadPairingRepairs {
     }
     // Why counted only once read: losing SSH proves nothing about the pairing.
     const readiness = await this.deps.readReadiness(await this.deps.connect(environment))
+    // Why re-read before judging the answer: an update or recovery may have stored a newer pairing
+    // while SSH answered; everything after this is synchronous, so the check holds through the write.
+    const current = this.deps.resolve(environmentId)
+    if (pairingRevisionOf(current) !== refusedRevision) {
+      return current
+    }
     this.attemptedAt.set(environmentId, [...recent, now])
     const pairingCode = this.publishedPairingCode(environmentId, readiness, deployment.localPort)
     const offer = parsePairingCode(pairingCode)
@@ -177,11 +183,6 @@ export class ManagedOrcadPairingRepairs {
           'the server still offers the pairing it refused; restarting it on the host issues a new one'
         )
       )
-    }
-    // Why re-read: an update or recovery may have stored a newer pairing while SSH answered.
-    const current = this.deps.resolve(environmentId)
-    if (pairingRevisionOf(current) !== refusedRevision) {
-      return current
     }
     let repaired: KnownRuntimeEnvironment
     try {

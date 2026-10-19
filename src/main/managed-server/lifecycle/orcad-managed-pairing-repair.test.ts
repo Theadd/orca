@@ -201,17 +201,20 @@ describe('ManagedOrcadPairingRepairs', () => {
     await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBeDefined()
   })
 
-  it('keeps a pairing an update stored while the host was being read', async () => {
-    const state = setup(() => readiness(offer('fresh-token')))
-    const updated = environment('updated-token', 7)
-    state.deps.readReadiness.mockImplementationOnce(async () => {
-      state.deps.resolve.mockReturnValue(updated)
-      return readiness(offer('stale-token'))
-    })
-    await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBe(updated)
-    expect(state.deps.refresh).not.toHaveBeenCalled()
-    expect(state.deps.repaired).not.toHaveBeenCalled()
-  })
+  it.each(['stale-token', 'refused-token'])(
+    'keeps a pairing an update stored while the host was being read (answer: %s)',
+    async (answered) => {
+      const state = setup(() => readiness(offer('fresh-token')))
+      const updated = environment('updated-token', 7)
+      state.deps.readReadiness.mockImplementationOnce(async () => {
+        state.deps.resolve.mockReturnValue(updated)
+        return readiness(offer(answered))
+      })
+      await expect(state.repairs.repair('env-1', REFUSED)).resolves.toBe(updated)
+      expect(state.deps.refresh).not.toHaveBeenCalled()
+      expect(state.deps.repaired).not.toHaveBeenCalled()
+    }
+  )
 
   it('caps attempts per window, failed ones included', async () => {
     let issued = 0

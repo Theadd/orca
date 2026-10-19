@@ -99,15 +99,19 @@ export function SshStatusSegment({
       // Why the registry's verdict: it is the same blocked reason the sidebar and Settings show.
       const blockedReason =
         registryHost?.health === 'blocked' ? registryHost.blockedReason : undefined
+      const repairableWithAccessLink = isRepairableWithAccessLink(environment)
       return {
         id: environment.id,
         label: registryHost?.label || environment.name || environment.id,
         blockedReason,
         blocked: blockedReason
           ? {
-              ...runtimeHostBlockedCopy(blockedReason, registryHost?.compatibility),
-              canRepair:
-                blockedReason === 'access-revoked' && isRepairableWithAccessLink(environment)
+              ...runtimeHostBlockedCopy(
+                blockedReason,
+                registryHost?.compatibility,
+                repairableWithAccessLink
+              ),
+              canRepair: blockedReason === 'access-revoked' && repairableWithAccessLink
             }
           : null,
         snapshot: statusEntry?.snapshot,

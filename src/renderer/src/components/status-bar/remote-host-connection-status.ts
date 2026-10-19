@@ -81,7 +81,8 @@ export type RuntimeHostBlockedCopy = {
 
 export function runtimeHostBlockedCopy(
   reason: RuntimeHostBlockedReason,
-  compatibility?: RuntimeCompatVerdict
+  compatibility?: RuntimeCompatVerdict,
+  repairableWithAccessLink = true
 ): RuntimeHostBlockedCopy {
   if (reason === 'access-revoked') {
     return {
@@ -93,10 +94,16 @@ export function runtimeHostBlockedCopy(
         'auto.components.status.bar.RuntimeHostStatusRow.access_revoked_summary',
         'This server revoked access for this computer'
       ),
-      explanation: translate(
-        'auto.components.status.bar.RuntimeHostStatusRow.access_revoked_explanation',
-        'Re-pair with a new pairing link from the server to reconnect.'
-      )
+      // Why: Orca pairs a managed server over SSH by itself; it reaches here only when that failed.
+      explanation: repairableWithAccessLink
+        ? translate(
+            'auto.components.status.bar.RuntimeHostStatusRow.access_revoked_explanation',
+            'Re-pair with a new pairing link from the server to reconnect.'
+          )
+        : translate(
+            'auto.components.status.bar.RuntimeHostStatusRow.managed_access_revoked_explanation',
+            "Orca couldn't pair with it again over SSH. Connect to try again."
+          )
     }
   }
   return {

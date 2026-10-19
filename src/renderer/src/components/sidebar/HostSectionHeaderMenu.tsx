@@ -146,8 +146,14 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
     // Why: drop any cached "compatible" verdict so the re-probe re-evaluates
     // version skew instead of trusting the prior pass.
     clearRuntimeCompatibilityCache(parsed.environmentId)
+    // Why connect: a refusal Orca can answer over SSH is retried, not just read back.
+    const retryPairing = row.blockedReason === 'access-revoked' && !repairableWithAccessLink
     try {
-      const response = await window.api.runtimeEnvironments.getStatus({
+      const response = await (
+        retryPairing
+          ? window.api.runtimeEnvironments.connect
+          : window.api.runtimeEnvironments.getStatus
+      )({
         selector: parsed.environmentId,
         timeoutMs: 10_000
       })
@@ -181,7 +187,7 @@ export function HostSectionHeaderMenu({ row }: { row: HostHeaderRow }): React.JS
         setBusy(false)
       }
     }
-  }, [mountedRef, row.hostId, row.label])
+  }, [mountedRef, repairableWithAccessLink, row.blockedReason, row.hostId, row.label])
 
   return (
     <DropdownMenu modal={false} open={open} onOpenChange={setOpen}>
