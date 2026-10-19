@@ -3539,6 +3539,8 @@
           },
           "TerminalRemoteRuntimeReconnectBanner": {
             "retryingTitle": "Reconnexion au runtime distant",
+            "pairingRefusedTitle": "This host no longer accepts this computer",
+            "pairingRefusedBody": "Orca couldn't pair with it again over SSH. Nothing on the host was stopped. Reconnect to try again.",
             "disconnectedTitle": "Runtime distant déconnecté",
             "retryingBody": "Orca réessaie automatiquement. Ce terminal reprendra si la connexion revient.",
             "disconnectedBody": "Les tentatives automatiques sont interrompues. Reconnectez-vous pour reprendre cette session de terminal.",

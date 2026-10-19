@@ -3410,6 +3410,8 @@
           },
           "TerminalRemoteRuntimeReconnectBanner": {
             "retryingTitle": "正在重新连接到远程运行时",
+            "pairingRefusedTitle": "This host no longer accepts this computer",
+            "pairingRefusedBody": "Orca couldn't pair with it again over SSH. Nothing on the host was stopped. Reconnect to try again.",
             "disconnectedTitle": "远程运行时已断开连接",
             "retryingBody": "Orca 正在自动重试。如果连接恢复，此终端将恢复。",
             "disconnectedBody": "自动重试已停止。重新连接以恢复此终端会话。",

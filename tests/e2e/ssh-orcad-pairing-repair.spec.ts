@@ -8,6 +8,7 @@ import type { Page } from '@stablyai/playwright-test'
 import { expect, test } from './helpers/orca-app'
 import { readPairedPaneContent } from './helpers/paired-host-terminal'
 import { reconnect } from './helpers/orcad-convert-flow'
+import { startFreezableTcpProxy, type FreezableTcpProxy } from './helpers/freezable-tcp-proxy'
 import {
   echoMarker,
   expectTerminalAnswers,
@@ -120,4 +121,91 @@ test('a server that now holds another host key is never paired, and connecting s
     expect(await pairing(page, environmentId)).toEqual(before)
     await page.screenshot({ path: testInfo.outputPath('foreign.png') })
   })
+})
+
+// Relaunches the server exactly as it ran, with the network to the host down, so the desktop's
+// first look at it is the refusal, and the offer it reads over SSH is the one this test leaves.
+const CAPTURE_LAUNCH =
+  'f=$(ls /root/.orca-remote/orcad-*/.orcad-pid) && pid=$(cat "$f") && echo "$pid" > /tmp/orcad-old-pid && dirname "$f" > /tmp/orcad-dir && ' +
+  "tr '\\0' '\\n' < /proc/$pid/cmdline > /tmp/orcad-cmd && tr '\\0' '\\n' < /proc/$pid/environ > /tmp/orcad-env"
+const RELAUNCH =
+  'd=$(cat /tmp/orcad-dir) && cd "$d" && : > .orcad-readiness && ' +
+  'mapfile -t c < /tmp/orcad-cmd && mapfile -t e < /tmp/orcad-env && ' +
+  '{ env -i "${e[@]}" nohup "${c[@]}" > .orcad-readiness 2>/dev/null < /dev/null & echo $! > .orcad-pid; }'
+const WITHDRAW_OFFER =
+  `node -e 'const fs=require("fs");const f=process.argv[1];fs.writeFileSync(f,fs.readFileSync(f,"utf8")` +
+  `.split("\\n").map((l)=>{try{const j=JSON.parse(l);if(j&&j.pairing){j.pairing={available:false,` +
+  `reason:"disabled_by_operator",guidance:"no offer in this test"}}return JSON.stringify(j)}catch{return l}})` +
+  `.join("\\n"))' "$(cat /tmp/orcad-dir)/.orcad-readiness"`
+
+test('a failed re-pair says why, and the pane stops reconnecting with that verdict', async (// oxlint-disable-next-line no-empty-pattern -- Owns its app launch through a restart session.
+{}, testInfo) => {
+  test.setTimeout(15 * 60_000)
+  let proxy: FreezableTcpProxy | null = null
+  try {
+    await withManagedHost(testInfo, async (fixture) => {
+      const { host } = fixture
+      proxy = await startFreezableTcpProxy(host.input.host, host.input.port ?? 22)
+      host.input = { ...host.input, port: proxy.port }
+      const { page, seeded, environmentId } = await launchManagedWorkspace(fixture)
+      const tabId = await openTerminalTab(page, seeded.worktreeId)
+      await echoMarker(page, tabId, 'BEFORE_REVOKE')
+      const before = await pairing(page, environmentId)
+
+      host.exec!(CAPTURE_LAUNCH)
+      proxy.cut('reset')
+      host.exec!(
+        `node -e 'const f=process.argv[1];const fs=require("fs");` +
+          `fs.writeFileSync(f,JSON.stringify(JSON.parse(fs.readFileSync(f,"utf8"))` +
+          `.filter((d)=>d.deviceId!==process.argv[2])))' ${DEVICES} ${before.deviceId}`
+      )
+      host.exec!(
+        `${KILL_ORCAD}; while kill -0 $(cat /tmp/orcad-old-pid) 2>/dev/null; do sleep 0.2; done; true`
+      )
+      host.exec!(RELAUNCH)
+      await expect
+        .poll(
+          () =>
+            host.exec!('test -s "$(cat /tmp/orcad-dir)/.orcad-readiness" && echo ready || true'),
+          {
+            timeout: 60_000
+          }
+        )
+        .toContain('ready')
+      host.exec!(WITHDRAW_OFFER)
+      proxy.restore()
+
+      try {
+        // The pane stops "Reconnecting" and says why, rather than a bare "disconnected".
+        await expect
+          .poll(() => reconnectBanner(page, tabId), { timeout: 4 * 60_000 })
+          .toBe('pairing-refused')
+      } catch (error) {
+        console.log(
+          '[pairing-repair] evidence',
+          JSON.stringify({
+            banner: await reconnectBanner(page, tabId),
+            status: await page.evaluate(
+              (id) => window.__store?.getState().runtimeStatusByEnvironmentId.get(id)?.snapshot,
+              environmentId
+            ),
+            ssh: await page.evaluate(
+              (id) => window.__store?.getState().sshConnectionStates.get(id),
+              seeded.targetId
+            ),
+            readiness: host.exec!('cat "$(cat /tmp/orcad-dir)/.orcad-readiness" | head -c 600')
+          })
+        )
+        await page.screenshot({ path: testInfo.outputPath('repair-failed-evidence.png') })
+        throw error
+      }
+      expect(await page.evaluate(() => document.body.innerText)).toMatch(
+        /couldn.t pair with it again over SSH/
+      )
+      expect(await pairing(page, environmentId)).toEqual(before)
+      await page.screenshot({ path: testInfo.outputPath('repair-failed.png') })
+    })
+  } finally {
+    await proxy?.close()
+  }
 })
