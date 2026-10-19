@@ -20,6 +20,19 @@ const VISIBLE_LIST_MAX_AGE_MS = 60_000
 let subscribed = false
 let loadState: 'idle' | 'loading' | 'ready' = 'idle'
 
+const NO_MACHINE_STATE: Pick<AppState, 'machineProviders' | 'machineEnvironmentProviders'> = {
+  machineProviders: {},
+  machineEnvironmentProviders: {}
+}
+
+/** The machines slice; sidebar and card surfaces also render against partial stores. */
+function machineSlice(
+  state: AppState
+): Pick<AppState, 'machineProviders' | 'machineEnvironmentProviders'> {
+  // Why: the slice is optional to every surface that only decorates hosts with machines.
+  return 'machineProviders' in state ? state : NO_MACHINE_STATE
+}
+
 /** Loads the cached inventories and follows main's pushes; retries a failed load on the next call. */
 export function ensureMachinesLoaded(): void {
   const machinesApi = window.api?.machines
@@ -106,8 +119,10 @@ function refreshAllMachines(): void {
 export function hasMachineProviders(): boolean {
   const state = useAppStore.getState()
   return (
-    Object.keys(state.machineProviders).length > 0 ||
-    Object.values(state.machineEnvironmentProviders).some((snapshots) => snapshots.length > 0)
+    Object.keys(machineSlice(state).machineProviders).length > 0 ||
+    Object.values(machineSlice(state).machineEnvironmentProviders).some(
+      (snapshots) => snapshots.length > 0
+    )
   )
 }
 
@@ -115,8 +130,10 @@ function hasAnyMachine(state: AppState): boolean {
   const hasMachines = (snapshots: Iterable<MachineProviderSnapshot>): boolean =>
     [...snapshots].some((snapshot) => snapshot.machines.length > 0)
   return (
-    hasMachines(Object.values(state.machineProviders)) ||
-    Object.values(state.machineEnvironmentProviders).some((snapshots) => hasMachines(snapshots))
+    hasMachines(Object.values(machineSlice(state).machineProviders)) ||
+    Object.values(machineSlice(state).machineEnvironmentProviders).some((snapshots) =>
+      hasMachines(snapshots)
+    )
   )
 }
 
@@ -126,9 +143,11 @@ function hasAnyMachine(state: AppState): boolean {
  * visible, so a provider without machines is never polled.
  */
 export function useMachineInventory(enabled: boolean): void {
-  const machinesExist = useAppStore(hasAnyMachine)
+  const machinesExist = useAppStore((state) => enabled && hasAnyMachine(state))
   // Why: a string keeps the selector stable; a server that becomes reachable is read then.
-  const reachable = useAppStore((state) => reachableEnvironmentIds(state).join('\n'))
+  const reachable = useAppStore((state) =>
+    enabled ? reachableEnvironmentIds(state).join('\n') : ''
+  )
   useEffect(() => {
     if (enabled) {
       ensureMachinesLoaded()
@@ -182,14 +201,17 @@ function selectMachineSources(
 }
 
 export function useMachineSources(): MachineSources {
-  const providers = useAppStore((state) => state.machineProviders)
-  const environments = useAppStore((state) => state.machineEnvironmentProviders)
+  const providers = useAppStore((state) => machineSlice(state).machineProviders)
+  const environments = useAppStore((state) => machineSlice(state).machineEnvironmentProviders)
   return selectMachineSources(providers, environments)
 }
 
 export function getMachineSources(): MachineSources {
   const state = useAppStore.getState()
-  return selectMachineSources(state.machineProviders, state.machineEnvironmentProviders)
+  return selectMachineSources(
+    machineSlice(state).machineProviders,
+    machineSlice(state).machineEnvironmentProviders
+  )
 }
 
 /** The machine a host runs on, or null for every other host. */
