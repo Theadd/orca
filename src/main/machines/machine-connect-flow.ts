@@ -17,6 +17,7 @@ import {
   type MachineSshConnectResult,
   type MachineSshTargets
 } from './machine-connect'
+import type { SshTargetStartWindow } from '../ssh/ssh-target-start-window'
 import { findRecord, markUnreachable, patchRecord } from './machine-inventory-records'
 import type { MachineProviderClient, MachineProviderEntry } from './machine-provider-client'
 
@@ -30,28 +31,43 @@ type MachineFetch = (
  * Connects a machine's access. A failure never removes its SSH target; it marks the machine
  * unreachable, and a failure on cached access asks the provider once in case the machine moved.
  */
-// A provider reports running when its container starts, before sshd accepts; dial again briefly.
-const FRESH_START_WINDOW_MS = 60_000
-const FRESH_START_RETRY_DELAYS_MS = [2_000, 6_000, 12_000]
-
 export class MachineConnectFlow {
-  private readonly startedAt = new Map<string, number>()
-
   constructor(
     private readonly client: MachineProviderClient,
     private readonly deps: {
       sshTargets: MachineSshTargets
       pairing: MachinePairing
+      starts: SshTargetStartWindow
       delay: (ms: number) => Promise<void>
     },
     private readonly fetch: MachineFetch
   ) {}
 
-  /** A machine just created or woken; its first connects tolerate sshd still starting. */
-  noteStarted(record: MachineRecord): void {
+  /** A machine just created or woken; its first dials tolerate sshd still starting. */
+  noteStarted(record: MachineRecord): MachineRecord {
     if (record.state === 'running') {
-      this.startedAt.set(`${record.providerKey}\0${record.id}`, this.client.now())
+      this.deps.starts.noteStarted(machineSshTargetId(record.providerKey, record.id))
     }
+    return record
+  }
+
+  /** A machine slept or removed soon after a start fails its dials at once again. */
+  noteStopped(record: MachineRecord): MachineRecord {
+    if (record.state !== 'running') {
+      this.deps.starts.noteStopped(machineSshTargetId(record.providerKey, record.id))
+    }
+    return record
+  }
+
+  /** A pane that dials the machine mid-wake waits for it instead of failing against a stopped host. */
+  trackWake(
+    providerKey: MachineProviderKey,
+    machineId: string,
+    wake: Promise<MachineRecord>
+  ): Promise<MachineRecord> {
+    const woken = wake.then((record) => this.noteStarted(record))
+    this.deps.starts.noteStarting(machineSshTargetId(providerKey, machineId), woken)
+    return woken
   }
 
   async connect(
@@ -131,24 +147,12 @@ export class MachineConnectFlow {
     return { kind: 'orca-server', ...result }
   }
 
-  private async dialSsh(
+  private dialSsh(
     record: MachineRecord,
     access: Extract<MachineAccess, { kind: 'ssh' }>
   ): Promise<MachineSshConnectResult> {
-    const started = this.startedAt.get(`${record.providerKey}\0${record.id}`)
-    const fresh = started !== undefined && this.client.now() - started < FRESH_START_WINDOW_MS
-    const delays = fresh ? FRESH_START_RETRY_DELAYS_MS : []
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await connectMachineSsh(this.deps.sshTargets, record, access)
-      } catch (error) {
-        // A refused host key is a verdict, not a slow start.
-        const delay = delays[attempt]
-        if (delay === undefined || /Host key verification failed/.test(String(error))) {
-          throw error
-        }
-        await this.deps.delay(delay)
-      }
-    }
+    return this.deps.starts.dial(machineSshTargetId(record.providerKey, record.id), () =>
+      connectMachineSsh(this.deps.sshTargets, record, access)
+    )
   }
 }

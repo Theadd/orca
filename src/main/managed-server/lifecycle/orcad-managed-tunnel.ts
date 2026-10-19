@@ -5,6 +5,8 @@ import type { SshConnection } from '../../ssh/connection/ssh-connection'
 import { probeManagedOrcadTunnel } from './orcad-managed-tunnel-resume'
 import { ensureManagedOrcadServing } from './orcad-managed-serving'
 import { OrcadManagedTunnelManager } from './orcad-managed-tunnel-manager'
+import { ensureTunnelAfterHostStart } from './orcad-managed-tunnel-start'
+import { sshTargetStarts } from '../../ssh/ssh-target-start-window'
 import { getRemoteRuntimeSharedControlAnsweredAt } from '../../ipc/runtime-environments/runtime-environment-shared-control-answers'
 import {
   getSshConnectionManager,
@@ -23,16 +25,22 @@ const managedTunnels = new OrcadManagedTunnelManager({
     ensureManagedOrcadServing({
       ...input,
       probe: probeManagedOrcadTunnel,
-      answeredAt: getRemoteRuntimeSharedControlAnsweredAt
+      answeredAt: (environmentId) => answeredSinceHostStart(input.target.id, environmentId)
     })
 })
+
+/** A machine slept and woke since its server last answered; that answer proves nothing now. */
+function answeredSinceHostStart(targetId: string, environmentId: string): number | null {
+  const at = getRemoteRuntimeSharedControlAnsweredAt(environmentId)
+  return at === null || sshTargetStarts.changedSince(targetId, at) ? null : at
+}
 
 export async function ensureOrcadManagedTunnel(
   userDataPath: string,
   selector: string
 ): Promise<void> {
   const environment = resolveEnvironment(userDataPath, selector)
-  await managedTunnels.ensure(environment, () =>
+  await ensureTunnelAfterHostStart(managedTunnels, environment, () =>
     resolveEnvironmentOrNull(userDataPath, environment.id)
   )
 }

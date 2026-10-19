@@ -11,6 +11,7 @@ import type {
 } from '../../shared/machine-inventory'
 import { machineSshTargetId, type MachinePairing, type MachineSshTargets } from './machine-connect'
 import { MachineConnectFlow } from './machine-connect-flow'
+import { sshTargetStarts, type SshTargetStartWindow } from '../ssh/ssh-target-start-window'
 import { pollWhileMachineState } from './machine-state-polling'
 import { MachineCreateFlow, isUnknownOutcome, type MachineCreateParams } from './machine-create'
 import {
@@ -41,6 +42,8 @@ export type MachineServiceDeps = MachineProviderClientDeps & {
   /** Whether a repo or workspace on this host runs on an execution host id; prunes gone rows. */
   isHostReferenced?: (hostId: string) => boolean
   delay?: (ms: number) => Promise<void>
+  /** Defaults to the process-wide window the managed server tunnel also reads. */
+  starts?: SshTargetStartWindow
 }
 
 type Mutation = 'sleep' | 'wake' | 'archive' | 'delete'
@@ -66,7 +69,7 @@ export class MachineService {
     })
     this.connections = new MachineConnectFlow(
       this.client,
-      { ...deps, delay: (ms) => this.delay(ms) },
+      { ...deps, starts: deps.starts ?? sshTargetStarts, delay: (ms) => this.delay(ms) },
       (key, id, onStderr) => this.fetch(key, id, onStderr)
     )
   }
@@ -123,7 +126,7 @@ export class MachineService {
   ): Promise<MachineRecord> {
     return this.creates
       .create(providerKey, params, options.operationId)
-      .then((record) => this.started(record))
+      .then((record) => this.connections.noteStarted(record))
   }
 
   cancelCreate(operationId: string): boolean {
@@ -140,8 +143,10 @@ export class MachineService {
     machineId: string,
     options: { operationId?: string } = {}
   ): Promise<MachineRecord> {
-    return this.mutate(providerKey, machineId, 'wake', options.operationId).then((record) =>
-      this.started(record)
+    return this.connections.trackWake(
+      providerKey,
+      machineId,
+      this.mutate(providerKey, machineId, 'wake', options.operationId)
     )
   }
 
@@ -228,9 +233,9 @@ export class MachineService {
             new MachineProviderError('conflict', `Another action is running on ${machineId}.`)
           )
     }
-    const done = this.runMutation(providerKey, machineId, verb, operationId).finally(() =>
-      this.mutationFlights.delete(flightKey)
-    )
+    const done = this.runMutation(providerKey, machineId, verb, operationId)
+      .then((record) => this.connections.noteStopped(record))
+      .finally(() => this.mutationFlights.delete(flightKey))
     this.mutationFlights.set(flightKey, { verb, done })
     return done
   }
@@ -322,11 +327,6 @@ export class MachineService {
       inventory.listedAt !== undefined &&
       now - inventory.listedAt < maxAgeMs
     )
-  }
-
-  private started(record: MachineRecord): MachineRecord {
-    this.connections.noteStarted(record)
-    return record
   }
 
   private delay(ms: number): Promise<void> {

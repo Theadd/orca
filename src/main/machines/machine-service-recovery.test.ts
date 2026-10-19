@@ -7,6 +7,7 @@ import {
 } from '../../shared/machine-inventory'
 import { getMachineInventoryStorePath } from './machine-inventory-store'
 import { MachineService } from './machine-service'
+import { machineSshTargetId } from './machine-connect'
 import {
   KEY,
   fail,
@@ -89,6 +90,50 @@ describe('MachineService recovery', () => {
 
     delay.mockClear()
     await expect(service.connect(KEY, 'sbx-1')).rejects.toThrow('Host key verification failed')
+    expect(delay).not.toHaveBeenCalled()
+  })
+
+  it('lets dials to a waking machine wait for the wake, then redial in its start window', async () => {
+    let finishWake: () => void = () => undefined
+    const { service, starts, delay } = await setup({
+      list: inventory([machine({ state: 'sleeping', access: undefined })]),
+      wake: async (args) => {
+        await new Promise<void>((resolve) => {
+          finishWake = resolve
+        })
+        return reply(machine())(args)
+      }
+    })
+    await service.list(KEY)
+    const targetId = machineSshTargetId(KEY, 'sbx-1')
+    const woken = service.wake(KEY, 'sbx-1')
+    const dialed = vi.fn(async () => {
+      if (dialed.mock.calls.length === 1) {
+        throw new Error('Connection closed by UNKNOWN port 65535')
+      }
+    })
+    const dial = starts.dial(targetId, dialed)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(dialed).not.toHaveBeenCalled()
+    finishWake()
+    await woken
+    await dial
+    expect(dialed).toHaveBeenCalledTimes(2)
+    expect(delay).toHaveBeenCalledWith(2_000)
+  })
+
+  it('stops redialing a machine slept soon after it woke', async () => {
+    const { service, starts, delay } = await setup({
+      list: inventory([machine({ state: 'sleeping', access: undefined })]),
+      wake: reply(machine()),
+      sleep: reply(machine({ state: 'sleeping', access: undefined }))
+    })
+    await service.list(KEY)
+    await service.wake(KEY, 'sbx-1')
+    await service.sleep(KEY, 'sbx-1')
+    const refused = vi.fn().mockRejectedValue(new Error('Connection reset by 127.0.0.1'))
+    await expect(starts.dial(machineSshTargetId(KEY, 'sbx-1'), refused)).rejects.toThrow()
+    expect(refused).toHaveBeenCalledTimes(1)
     expect(delay).not.toHaveBeenCalled()
   })
 
